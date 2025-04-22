@@ -30,7 +30,7 @@ interface DataRow {
   код_окэд: string;
   вид_деятельности: string;
   средняя_численность_работников: number;
-  Сумма_по_полю_ФОТ: number;
+  'Сумма по полю ФОТ': number;
   Сумма_по_полю_ср_зп: number;
 }
 
@@ -101,32 +101,34 @@ const DataCharts: React.FC<DataChartsProps> = ({ data }) => {
   const [chartType, setChartType] = useState<'bar' | 'pie'>('bar');
 
   const prepareChartData = () => {
-    const totalFund = data.reduce((sum, row) => sum + row.Сумма_по_полю_ФОТ, 0);
+    const totalFund = data.reduce((sum, row) => sum + Number(row['Сумма по полю ФОТ'] || 0), 0);
     const sortedData = [...data].sort((a, b) => {
       if (selectedChart === 'workforce') {
-        return b.средняя_численность_работников - a.средняя_численность_работников;
+        return Number(b.средняя_численность_работников || 0) - Number(a.средняя_численность_работников || 0);
       } else if (selectedChart === 'salary') {
-        return b.Сумма_по_полю_ср_зп - a.Сумма_по_полю_ср_зп;
+        return Number(b.Сумма_по_полю_ср_зп || 0) - Number(a.Сумма_по_полю_ср_зп || 0);
       } else {
-        return b.Сумма_по_полю_ФОТ - a.Сумма_по_полю_ФОТ;
+        return Number(b['Сумма по полю ФОТ'] || 0) - Number(a['Сумма по полю ФОТ'] || 0);
       }
     });
 
-    return sortedData.slice(0, 10).map(row => {
-      const fundPercentage = (row.Сумма_по_полю_ФОТ / totalFund) * 100;
-      return {
-        name: row.вид_деятельности.length > 30 
-          ? row.вид_деятельности.substring(0, 30) + '...'
-          : row.вид_деятельности,
-        fullName: row.вид_деятельности,
-        code: row.код_окэд,
-        workforce: row.средняя_численность_работников,
-        salary: row.Сумма_по_полю_ср_зп,
-        fund: row.Сумма_по_полю_ФОТ,
-        fundPercentage,
-        totalFund
-      };
-    });
+    return sortedData.slice(0, 10).map(row => ({
+      name: row.вид_деятельности.length > 30 
+        ? row.вид_деятельности.substring(0, 30) + '...'
+        : row.вид_деятельности,
+      fullName: row.вид_деятельности,
+      code: row.код_окэд,
+      value: selectedChart === 'workforce' 
+        ? Number(row.средняя_численность_работников || 0)
+        : selectedChart === 'salary'
+        ? Number(row.Сумма_по_полю_ср_зп || 0)
+        : Number(row['Сумма по полю ФОТ'] || 0),
+      workforce: Number(row.средняя_численность_работников || 0),
+      salary: Number(row.Сумма_по_полю_ср_зп || 0),
+      fund: Number(row['Сумма по полю ФОТ'] || 0),
+      fundPercentage: totalFund > 0 ? (Number(row['Сумма по полю ФОТ'] || 0) / totalFund) * 100 : 0,
+      totalFund
+    }));
   };
 
   const getChartHeight = () => {
@@ -136,21 +138,8 @@ const DataCharts: React.FC<DataChartsProps> = ({ data }) => {
 
   const renderWorkforceChart = () => {
     const chartData = prepareChartData();
+    console.log('Chart Data:', chartData);
     
-    // Статические тестовые данные для отладки
-    const staticWorkforceData = [
-      { name: "Гос.Органы", value: 500000 },
-      { name: "Сельское хозяйство", value: 320000 },
-      { name: "Промышленность", value: 280000 },
-      { name: "Торговля", value: 200000 },
-      { name: "Строительство", value: 180000 },
-      { name: "Образование", value: 150000 },
-      { name: "Здравоохранение", value: 120000 },
-      { name: "Транспорт", value: 90000 },
-      { name: "Информация и связь", value: 70000 },
-      { name: "Финансы", value: 50000 }
-    ];
-
     return chartType === 'bar' ? (
       <ResponsiveContainer width="100%" height={600}>
         <BarChart data={chartData} margin={{ top: 20, right: 30, left: 250, bottom: 150 }}>
@@ -195,20 +184,22 @@ const DataCharts: React.FC<DataChartsProps> = ({ data }) => {
     ) : (
       <div style={{ width: '100%', height: '600px' }}>
         <h3 style={{ textAlign: 'center' }}>Распределение численности работников (топ-10)</h3>
-        <ResponsiveContainer width="100%" height="80%">
+        <ResponsiveContainer width="100%" height={400}>
           <PieChart>
             <Pie
-              data={staticWorkforceData}
+              data={chartData}
               cx="50%"
               cy="50%"
-              labelLine={false}
-              outerRadius={200}
+              labelLine={true}
+              outerRadius={160}
+              innerRadius={0}
+              paddingAngle={5}
               fill="#8884d8"
               dataKey="value"
               nameKey="name"
               label={({ name, percent }) => `${(percent * 100).toFixed(0)}%`}
             >
-              {staticWorkforceData.map((entry, index) => (
+              {chartData.map((entry, index) => (
                 <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
               ))}
             </Pie>
@@ -218,7 +209,8 @@ const DataCharts: React.FC<DataChartsProps> = ({ data }) => {
               align="right"
               verticalAlign="middle"
               wrapperStyle={{
-                marginRight: "200px"
+                marginRight: "20px",
+                paddingRight: "100px"
               }}
             />
           </PieChart>
@@ -229,21 +221,8 @@ const DataCharts: React.FC<DataChartsProps> = ({ data }) => {
 
   const renderSalaryChart = () => {
     const chartData = prepareChartData();
+    console.log('Salary Chart Data:', chartData);
     
-    // Статические тестовые данные для отладки
-    const staticSalaryData = [
-      { name: "Финансы", value: 350000 },
-      { name: "Информация и связь", value: 320000 },
-      { name: "Гос.Органы", value: 280000 },
-      { name: "Добыча полезных ископаемых", value: 250000 },
-      { name: "Энергетика", value: 220000 },
-      { name: "Транспорт", value: 180000 },
-      { name: "Строительство", value: 160000 },
-      { name: "Промышленность", value: 150000 },
-      { name: "Торговля", value: 130000 },
-      { name: "Сельское хозяйство", value: 100000 }
-    ];
-
     return chartType === 'bar' ? (
       <ResponsiveContainer width="100%" height={600}>
         <BarChart data={chartData} margin={{ top: 20, right: 30, left: 250, bottom: 150 }}>
@@ -288,20 +267,22 @@ const DataCharts: React.FC<DataChartsProps> = ({ data }) => {
     ) : (
       <div style={{ width: '100%', height: '600px' }}>
         <h3 style={{ textAlign: 'center' }}>Распределение средней зарплаты (топ-10)</h3>
-        <ResponsiveContainer width="100%" height="80%">
+        <ResponsiveContainer width="100%" height={400}>
           <PieChart>
             <Pie
-              data={staticSalaryData}
+              data={chartData}
               cx="50%"
               cy="50%"
-              labelLine={false}
-              outerRadius={200}
+              labelLine={true}
+              outerRadius={160}
+              innerRadius={0}
+              paddingAngle={5}
               fill="#82ca9d"
               dataKey="value"
               nameKey="name"
               label={({ name, percent }) => `${(percent * 100).toFixed(0)}%`}
             >
-              {staticSalaryData.map((entry, index) => (
+              {chartData.map((entry, index) => (
                 <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
               ))}
             </Pie>
@@ -311,7 +292,8 @@ const DataCharts: React.FC<DataChartsProps> = ({ data }) => {
               align="right"
               verticalAlign="middle"
               wrapperStyle={{
-                marginRight: "200px"
+                marginRight: "20px",
+                paddingRight: "100px"
               }}
             />
           </PieChart>
@@ -322,21 +304,8 @@ const DataCharts: React.FC<DataChartsProps> = ({ data }) => {
 
   const renderFundChart = () => {
     const chartData = prepareChartData();
+    console.log('Fund Chart Data:', chartData);
     
-    // Статические тестовые данные для отладки
-    const staticTestData = [
-      { name: "Гос.Органы", value: 5000000000 },
-      { name: "Сельское хозяйство", value: 2500000000 },
-      { name: "Промышленность", value: 1500000000 },
-      { name: "Торговля", value: 800000000 },
-      { name: "Строительство", value: 700000000 },
-      { name: "Образование", value: 600000000 },
-      { name: "Здравоохранение", value: 550000000 },
-      { name: "Транспорт", value: 450000000 },
-      { name: "Информация и связь", value: 400000000 },
-      { name: "Финансы", value: 300000000 }
-    ];
-
     return chartType === 'bar' ? (
       <ResponsiveContainer width="100%" height={600}>
         <BarChart data={chartData} margin={{ top: 20, right: 30, left: 250, bottom: 150 }}>
@@ -381,20 +350,22 @@ const DataCharts: React.FC<DataChartsProps> = ({ data }) => {
     ) : (
       <div style={{ width: '100%', height: '600px' }}>
         <h3 style={{ textAlign: 'center' }}>Распределение фонда оплаты труда (топ-10)</h3>
-        <ResponsiveContainer width="100%" height="80%">
+        <ResponsiveContainer width="100%" height={400}>
           <PieChart>
             <Pie
-              data={staticTestData}
+              data={chartData}
               cx="50%"
               cy="50%"
-              labelLine={false}
-              outerRadius={200}
+              labelLine={true}
+              outerRadius={160}
+              innerRadius={0}
+              paddingAngle={5}
               fill="#8884d8"
               dataKey="value"
               nameKey="name"
               label={({ name, percent }) => `${(percent * 100).toFixed(0)}%`}
             >
-              {staticTestData.map((entry, index) => (
+              {chartData.map((entry, index) => (
                 <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
               ))}
             </Pie>
@@ -404,7 +375,8 @@ const DataCharts: React.FC<DataChartsProps> = ({ data }) => {
               align="right"
               verticalAlign="middle"
               wrapperStyle={{
-                marginRight: "200px"
+                marginRight: "20px",
+                paddingRight: "100px"
               }}
             />
           </PieChart>
