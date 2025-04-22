@@ -73,6 +73,7 @@ const columns: GridColDef[] = [
 
 const DataTable: React.FC = () => {
   const [rows, setRows] = useState<DataRow[]>([]);
+  const [originalRows, setOriginalRows] = useState<DataRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
@@ -99,6 +100,7 @@ const DataTable: React.FC = () => {
         Сумма_по_полю_ФОТ: row['Сумма по полю ФОТ']
       }));
       setRows(dataWithIds);
+      setOriginalRows(dataWithIds);
       setError(null);
     } catch (err: any) {
       setError('Ошибка при загрузке данных');
@@ -114,18 +116,58 @@ const DataTable: React.FC = () => {
 
   const handleSearch = () => {
     if (searchTerm) {
-      const filters = {
-        код_окэд: searchTerm,
-        вид_деятельности: searchTerm
-      };
-      fetchData(filters);
+      const filteredRows = originalRows.filter(row => {
+        const searchTermLower = searchTerm.toLowerCase();
+        return (
+          row.код_окэд.toLowerCase().includes(searchTermLower) ||
+          row.вид_деятельности.toLowerCase().includes(searchTermLower)
+        );
+      });
+      setRows(filteredRows);
     } else {
-      fetchData();
+      setRows(originalRows);
     }
   };
 
   const handleFilter = () => {
-    fetchData(filterValues);
+    if (Object.values(filterValues).some(value => value !== '')) {
+      const filteredRows = originalRows.filter(row => {
+        // Проверка кода ОКЭД
+        if (filterValues.код_окэд && !row.код_окэд.toLowerCase().includes(filterValues.код_окэд.toLowerCase())) {
+          return false;
+        }
+        
+        // Проверка вида деятельности
+        if (filterValues.вид_деятельности && !row.вид_деятельности.toLowerCase().includes(filterValues.вид_деятельности.toLowerCase())) {
+          return false;
+        }
+        
+        // Проверка минимальной численности
+        if (filterValues.средняя_численность_min && Number(row.средняя_численность_работников) < Number(filterValues.средняя_численность_min)) {
+          return false;
+        }
+        
+        // Проверка максимальной численности
+        if (filterValues.средняя_численность_max && Number(row.средняя_численность_работников) > Number(filterValues.средняя_численность_max)) {
+          return false;
+        }
+        
+        // Проверка минимальной суммы налогов
+        if (filterValues.сумма_налогов_min && Number(row.сумма_налогов) < Number(filterValues.сумма_налогов_min)) {
+          return false;
+        }
+        
+        // Проверка максимальной суммы налогов
+        if (filterValues.сумма_налогов_max && Number(row.сумма_налогов) > Number(filterValues.сумма_налогов_max)) {
+          return false;
+        }
+        
+        return true;
+      });
+      setRows(filteredRows);
+    } else {
+      setRows(originalRows);
+    }
     setShowFilters(false);
   };
 
