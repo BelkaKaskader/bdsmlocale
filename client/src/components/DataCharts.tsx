@@ -213,7 +213,14 @@ const DataCharts: React.FC<DataChartsProps> = ({ data }) => {
               ))}
             </Pie>
             <Tooltip formatter={(value) => formatValue(Number(value))} />
-            <Legend />
+            <Legend 
+              layout="vertical"
+              align="right"
+              verticalAlign="middle"
+              wrapperStyle={{
+                marginRight: "200px"
+              }}
+            />
           </PieChart>
         </ResponsiveContainer>
       </div>
@@ -299,7 +306,14 @@ const DataCharts: React.FC<DataChartsProps> = ({ data }) => {
               ))}
             </Pie>
             <Tooltip formatter={(value) => formatValue(Number(value))} />
-            <Legend />
+            <Legend 
+              layout="vertical"
+              align="right"
+              verticalAlign="middle"
+              wrapperStyle={{
+                marginRight: "200px"
+              }}
+            />
           </PieChart>
         </ResponsiveContainer>
       </div>
@@ -385,7 +399,14 @@ const DataCharts: React.FC<DataChartsProps> = ({ data }) => {
               ))}
             </Pie>
             <Tooltip formatter={(value) => formatValue(Number(value))} />
-            <Legend />
+            <Legend 
+              layout="vertical"
+              align="right"
+              verticalAlign="middle"
+              wrapperStyle={{
+                marginRight: "200px"
+              }}
+            />
           </PieChart>
         </ResponsiveContainer>
       </div>
