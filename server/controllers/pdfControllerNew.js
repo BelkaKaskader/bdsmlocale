@@ -1,0 +1,931 @@
+const PDFDocument = require('pdfkit');
+const path = require('path');
+const { Сводная } = require('../models');
+const { Op } = require('sequelize');
+const fs = require('fs');
+
+// Общие константы для форматирования PDF
+const lineHeight = 12; // Высота строки
+const minHeight = 18; // Минимальная высота
+const footerHeight = 50; // Высота нижнего колонтитула
+const tableWidth = 500; // Ширина таблицы
+const labelWidth = 250; // Увеличиваем ширину метки с 200 до 250
+const valueWidth = 250; // Уменьшаем ширину значения с 300 до 250
+const startX = 70; // Начальная X-координата
+const baseRowHeight = 20; // Базовая высота строки
+const pageMargin = 50; // Отступ страницы
+
+// Константы стилей и размеров
+const STYLES = {
+  fontSize: {
+    title: 16,
+    header: 12,
+    text: 10,
+    small: 8,
+    smallest: 6
+  },
+  spacing: {
+    lineGap: 3,
+    characterSpacing: 0.2,
+    columnGap: 5, // Уменьшаем отступ между колонками до 5px
+    summaryLineGap: 15
+  },
+  table: {
+    width: tableWidth,
+    startX: 40, // Немного уменьшаем отступ слева
+    columns: {
+      код_окэд: 65, // Немного уменьшаем
+      вид_деятельности: 135, // Немного уменьшаем
+      количество_нп: 40, // Немного уменьшаем
+      средняя_численность_работников: 45,
+      'Сумма по полю ФОТ': 85, // Немного увеличиваем для больших чисел
+      Сумма_по_полю_ср_зп: 85 // Немного увеличиваем для больших чисел
+    }
+  }
+};
+
+// Форматирование чисел с разделителями
+const formatNumber = (num) => {
+  return new Intl.NumberFormat('ru-RU').format(num);
+};
+
+// Определение путей к шрифтам
+const FONTS = {
+  regular: path.join(__dirname, '../fonts/PTSans-Regular.ttf'),
+  bold: path.join(__dirname, '../fonts/PTSans-Bold.ttf'),
+  arial: path.join(__dirname, '../fonts/arial.ttf'),
+  dejavu: path.join(__dirname, '../fonts/DejaVuSans.ttf'),
+  dejavuBold: path.join(__dirname, '../fonts/DejaVuSans-Bold.ttf')
+};
+
+// Проверка наличия шрифтов и их валидация
+const validateFonts = () => {
+  const missingFonts = [];
+  Object.entries(FONTS).forEach(([name, fontPath]) => {
+    try {
+      if (!fs.existsSync(fontPath)) {
+        missingFonts.push(fontPath);
+        console.error(`Шрифт не найден: ${fontPath}`);
+      } else {
+        const stats = fs.statSync(fontPath);
+        if (stats.size === 0) {
+          missingFonts.push(fontPath);
+          console.error(`Шрифт поврежден или пуст: ${fontPath}`);
+        }
+      }
+    } catch (error) {
+      missingFonts.push(fontPath);
+      console.error(`Ошибка при проверке шрифта ${fontPath}:`, error.message);
+    }
+  });
+  
+  if (missingFonts.length > 0) {
+    throw new Error(`Отсутствуют или повреждены следующие шрифты: ${missingFonts.join(', ')}`);
+  }
+};
+
+// Функция для обработки текста перед добавлением в PDF
+const processText = (text) => {
+  if (!text) return '';
+  return String(text)
+    .normalize('NFKC')
+    .replace(/[\u0000-\u0008\u000B-\u000C\u000E-\u001F]/g, '')
+    .trim();
+};
+
+// Создание и настройка PDF документа
+const createPdfDocument = () => {
+  const doc = new PDFDocument({
+    size: 'A4',
+    margin: 50,
+    bufferPages: true,
+    lang: 'ru',
+    autoFirstPage: true,
+    info: {
+      Title: 'Отчет по данным "Сводная"',
+      Author: 'BDSM API',
+      Subject: 'Статистические данные',
+      Keywords: 'отчет, статистика, данные',
+      CreationDate: new Date(),
+    }
+  });
+
+  // Регистрация шрифтов
+  doc.registerFont('PTSans', FONTS.regular);
+  doc.registerFont('PTSans-Bold', FONTS.bold);
+  doc.registerFont('Arial', FONTS.arial);
+  doc.registerFont('DejaVu', FONTS.dejavu);
+  doc.registerFont('DejaVu-Bold', FONTS.dejavuBold);
+
+  // Установка базового шрифта
+  doc.font('PTSans');
+
+  return doc;
+};
+
+// Функция для отрисовки заголовков таблицы
+const drawTableHeaders = (doc, yPos) => {
+  let currentY = yPos;
+  const extraPadding = 5;
+  const positions = calculatePositions();
+  
+  // Устанавливаем размер шрифта для заголовков
+  doc.fontSize(STYLES.fontSize.text);
+  
+  // Рисуем заголовки
+  doc.text('Код ОКЭД', positions.код_окэд, currentY, { 
+    width: STYLES.table.columns.код_окэд,
+    align: 'left'
+  });
+  
+  doc.text('Вид деятельности', positions.вид_деятельности, currentY, { 
+    width: STYLES.table.columns.вид_деятельности,
+    align: 'left'
+  });
+  
+  doc.text('Кол-во', positions.количество_нп, currentY, { 
+    width: STYLES.table.columns.количество_нп,
+    align: 'right'
+  });
+  
+  doc.text('Числ.', positions.численность, currentY, { 
+    width: STYLES.table.columns.средняя_численность_работников,
+    align: 'right'
+  });
+  
+  doc.text('ФОТ', positions.фот, currentY, { 
+    width: STYLES.table.columns['Сумма по полю ФОТ'],
+    align: 'right'
+  });
+  
+  doc.text('Ср. ЗП', positions.ср_зп, currentY, { 
+    width: STYLES.table.columns.Сумма_по_полю_ср_зп,
+    align: 'right'
+  });
+
+  // Добавляем отступ после заголовков
+  currentY += lineHeight + extraPadding;
+  
+  // Добавляем линию под заголовками
+  doc.moveTo(STYLES.table.startX, currentY)
+     .lineTo(STYLES.table.startX + STYLES.table.width, currentY)
+     .stroke();
+  
+  return currentY + 5;
+};
+
+// Функция для вычисления позиций колонок
+const calculatePositions = () => {
+  let currentX = STYLES.table.startX;
+  const positions = {};
+  
+  // Код ОКЭД
+  positions.код_окэд = currentX;
+  currentX += STYLES.table.columns.код_окэд + STYLES.spacing.columnGap;
+  
+  // Вид деятельности
+  positions.вид_деятельности = currentX;
+  currentX += STYLES.table.columns.вид_деятельности + STYLES.spacing.columnGap;
+  
+  // Количество
+  positions.количество_нп = currentX;
+  currentX += STYLES.table.columns.количество_нп + STYLES.spacing.columnGap;
+  
+  // Численность
+  positions.численность = currentX;
+  currentX += STYLES.table.columns.средняя_численность_работников + STYLES.spacing.columnGap;
+  
+  // ФОТ
+  positions.фот = currentX;
+  currentX += STYLES.table.columns['Сумма по полю ФОТ'] + STYLES.spacing.columnGap;
+  
+  // Средняя ЗП
+  positions.ср_зп = currentX;
+  
+  return positions;
+};
+
+
+exports.generatePdf = async (req, res) => {
+  try {
+    console.log('Начало генерации PDF отчета...');
+    
+    // Проверяем наличие и валидность шрифтов перед генерацией PDF
+    validateFonts();
+    
+    // Получаем данные из базы данных
+    let records;
+    if (req.query.filter) {
+      records = await Сводная.findAll({
+        attributes: [
+          'id',
+          'код_окэд',
+          'вид_деятельности',
+          'количество_нп',
+          'средняя_численность_работников',
+          'Сумма по полю ФОТ',
+          'Сумма_по_полю_ср_зп',
+          'сумма_налогов'
+        ],
+        where: {
+          [Op.or]: [
+            { код_окэд: { [Op.iLike]: `%${req.query.filter}%` } },
+            { вид_деятельности: { [Op.iLike]: `%${req.query.filter}%` } }
+          ]
+        },
+        order: [['код_окэд', 'ASC']],
+        charset: 'utf8'
+      });
+    } else {
+      records = await Сводная.findAll({
+        attributes: [
+          'id',
+          'код_окэд',
+          'вид_деятельности',
+          'количество_нп',
+          'средняя_численность_работников',
+          'Сумма по полю ФОТ',
+          'Сумма_по_полю_ср_зп',
+          'сумма_налогов'
+        ],
+        order: [['код_окэд', 'ASC']],
+        charset: 'utf8'
+      });
+    }
+    
+    console.log(`Получено ${records.length} записей из базы данных`);
+    if (records.length > 0) {
+      console.log('Пример записи из БД:', {
+        код_окэд: records[0].код_окэд,
+        вид_деятельности: records[0].вид_деятельности
+      });
+    }
+    
+    // Создаем PDF документ
+    console.log('Создаем PDF документ...');
+    const doc = createPdfDocument();
+
+    // Настраиваем заголовки для скачивания
+    res.setHeader('Content-Type', 'application/pdf; charset=utf-8');
+    res.setHeader('Content-Disposition', `attachment; filename*=UTF-8''${encodeURIComponent(`report-${Date.now()}.pdf`)}`);
+
+    // Обработчик ошибок для потока
+    doc.on('error', (error) => {
+      console.error('Ошибка при генерации PDF:', error);
+      if (!res.headersSent) {
+        res.status(500).json({ 
+          message: 'Ошибка при генерации PDF', 
+          error: error.message 
+        });
+      }
+    });
+
+    // Направляем PDF в response
+    doc.pipe(res);
+
+    // Добавляем заголовок
+    doc.font('PTSans-Bold')
+       .fontSize(STYLES.fontSize.title)
+       .text(processText('Отчет по данным "Сводная"'), {
+      align: 'center',
+      underline: true,
+         lineGap: STYLES.spacing.lineGap,
+         characterSpacing: STYLES.spacing.characterSpacing
+    });
+    doc.moveDown();
+
+    // Возвращаемся к обычному шрифту
+    doc.font('PTSans');
+
+    // Добавляем дату создания
+    const now = new Date();
+    doc.fontSize(STYLES.fontSize.text)
+       .text(processText(`Дата создания: ${now.toLocaleDateString()} ${now.toLocaleTimeString()}`), {
+      align: 'right',
+         characterSpacing: STYLES.spacing.characterSpacing
+    });
+    doc.moveDown();
+
+    // Добавляем примененные фильтры
+    if (req.query.filter) {
+      doc.fontSize(STYLES.fontSize.text)
+         .text(processText(`Применен фильтр: "${req.query.filter}"`), {
+        align: 'left',
+        italics: true,
+           characterSpacing: STYLES.spacing.characterSpacing
+      });
+      doc.moveDown();
+    }
+
+    // Проверяем наличие данных
+    if (records.length === 0) {
+      doc.fontSize(STYLES.fontSize.text)
+         .text(processText('Нет данных для отображения.'), {
+        align: 'center',
+           characterSpacing: STYLES.spacing.characterSpacing
+      });
+    } else {
+      // Добавляем информацию о количестве записей
+      doc.fontSize(STYLES.fontSize.text)
+         .text(processText(`Всего записей: ${records.length}`), {
+        align: 'left',
+           characterSpacing: STYLES.spacing.characterSpacing
+      });
+      doc.moveDown();
+
+      let y = doc.y;
+
+      // Функция для проверки необходимости новой страницы
+      const needNewPage = (currentY, contentHeight) => {
+        return (currentY + contentHeight) > (doc.page.height - footerHeight);
+      };
+
+      // Отрисовка заголовков таблицы через общую функцию
+      y = drawTableHeaders(doc, y);
+
+      // Рисуем данные таблицы
+      let rowIndex = 0;
+      const availablePageHeight = doc.page.height - pageMargin - footerHeight;
+      
+      for (const row of records) {
+        // Вычисляем высоту текущей записи
+        let деятельность = processText(row.вид_деятельности);
+        const linesCount = Math.ceil(деятельность.length / 22); // Примерное количество строк
+        const estimatedHeight = Math.max(20, linesCount * 12 + 10); // Минимум 20px, иначе высота по контенту
+        
+        // Обрабатываем длинные названия с добавлением переносов
+        let lines = [];
+        
+        // Разбиваем текст на слова и обрабатываем длинные слова
+        let words = деятельность.split(' ');
+        let currentLine = '';
+        const maxLineLength = 20; // Уменьшаем максимальную длину строки
+        
+        for (let word of words) {
+          word = word.trim();
+          if (!word) continue;
+          
+          // Обработка длинных слов
+          if (word.length > maxLineLength) {
+            // Добавляем текущую строку, если она не пуста
+            if (currentLine) {
+              lines.push(currentLine.trim());
+              currentLine = '';
+            }
+            
+            // Разбиваем длинное слово на части
+            while (word.length > maxLineLength - 1) { // -1 для дефиса
+              const breakPoint = maxLineLength - 1;
+              lines.push(word.substring(0, breakPoint) + '-');
+              word = word.substring(breakPoint);
+            }
+            currentLine = word;
+          } else {
+            // Проверяем, поместится ли слово в текущую строку
+            if (!currentLine) {
+              currentLine = word;
+            } else if ((currentLine + ' ' + word).length <= maxLineLength) {
+              currentLine += ' ' + word;
+            } else {
+              lines.push(currentLine.trim());
+              currentLine = word;
+            }
+          }
+        }
+        
+        if (currentLine) {
+          lines.push(currentLine.trim());
+        }
+
+        const extraPadding = Math.max(0, lines.length - 1) * 2;
+        const totalHeight = Math.max(lines.length * lineHeight + extraPadding, minHeight);
+        let rowTotalHeight = totalHeight + 8; // Общая высота записи с отступами
+
+        // Проверяем необходимость новой страницы
+        if (y + rowTotalHeight > doc.page.height - footerHeight - 20) {
+            // Проверяем, не последняя ли это запись
+            if (rowIndex < records.length - 1) {
+          doc.addPage();
+                y = pageMargin;
+                y = drawTableHeaders(doc, y);
+            }
+        }
+
+        doc.fontSize(STYLES.fontSize.text);
+        
+        // Добавляем отступ перед каждой записью
+        y += 3;
+
+        const positions = calculatePositions();
+
+        // Код ОКЭД
+        doc.text(processText(row.код_окэд), positions.код_окэд, y, { 
+          width: STYLES.table.columns.код_окэд,
+          align: 'left',
+          characterSpacing: STYLES.spacing.characterSpacing
+        });
+
+        // Вид деятельности
+        doc.text(lines.join('\n'), positions.вид_деятельности, y, { 
+          width: STYLES.table.columns.вид_деятельности,
+          align: 'left',
+          characterSpacing: STYLES.spacing.characterSpacing,
+          lineGap: 0,
+          paragraphGap: 0
+        });
+        
+        // Количество
+        doc.text(formatNumber(row.количество_нп || 0), positions.количество_нп, y, { 
+          width: STYLES.table.columns.количество_нп,
+          align: 'right',
+          characterSpacing: STYLES.spacing.characterSpacing
+        });
+
+        // Численность
+        const численность = parseFloat(row.средняя_численность_работников) || 0;
+        doc.text(formatNumber(численность), positions.численность, y, { 
+          width: STYLES.table.columns.средняя_численность_работников,
+          align: 'right',
+          characterSpacing: STYLES.spacing.characterSpacing
+        });
+
+        // ФОТ
+        const фот = parseFloat(row['Сумма по полю ФОТ']);
+        const фотText = !isNaN(фот) ? formatNumber(Math.round(фот)) : '-';
+        doc.text(фотText, positions.фот, y, { 
+          width: STYLES.table.columns['Сумма по полю ФОТ'],
+          align: 'right',
+          characterSpacing: STYLES.spacing.characterSpacing
+        });
+
+        // Средняя зарплата
+        const срЗп = parseFloat(row.Сумма_по_полю_ср_зп);
+        const срЗпText = !isNaN(срЗп) ? formatNumber(Math.round(срЗп)) : '-';
+        doc.text(срЗпText, positions.ср_зп, y, { 
+          width: STYLES.table.columns.Сумма_по_полю_ср_зп,
+          align: 'right',
+          characterSpacing: STYLES.spacing.characterSpacing
+        });
+
+        // Обновляем позицию для следующей строки с увеличенным отступом
+        y += rowTotalHeight;
+
+        // Добавляем разделитель после каждой строки
+        doc.moveTo(STYLES.table.startX, y)
+           .lineTo(STYLES.table.startX + STYLES.table.width, y)
+           .lineWidth(0.25)
+           .stroke();
+        
+        y += 5; // Увеличиваем отступ после линии
+        rowIndex++;
+      }
+
+      // Добавляем нижнюю линию таблицы
+      doc.moveTo(STYLES.table.startX, y).lineTo(STYLES.table.startX + STYLES.table.width, y).lineWidth(1).stroke();
+
+      // Добавляем номера страниц только на страницы с контентом
+    const pages = doc.bufferedPageRange();
+    for (let i = 0; i < pages.count; i++) {
+      doc.switchToPage(i);
+        // Проверяем, есть ли контент на странице
+        if (doc.page.content && doc.page.content.length > 0) {
+      doc.fontSize(8).text(
+        `Страница ${i + 1} из ${pages.count}`,
+        0,
+            doc.page.height - 30,
+        { align: 'center' }
+      );
+        }
+      }
+    }
+
+    // Завершаем документ
+    if (!res.headersSent) {
+    doc.end();
+    }
+  } catch (error) {
+    console.error('Ошибка при генерации PDF:', error);
+    console.error('Стек вызовов:', error.stack);
+    if (!res.headersSent) {
+    res.status(500).json({ 
+      message: 'Ошибка при генерации PDF', 
+      error: error.message,
+      stack: error.stack
+    });
+    }
+  }
+};
+
+exports.generateDetailPdf = async (req, res) => {
+  try {
+    console.log('Начало генерации детального PDF отчета...');
+    const { id } = req.params;
+    console.log('ID записи:', id);
+    
+    // Проверяем наличие и валидность шрифтов перед генерацией PDF
+    validateFonts();
+    
+    // Получаем данные конкретной записи
+    console.log('Выполняем запрос к базе данных...');
+    const record = await Сводная.findByPk(id);
+    
+    if (!record) {
+      console.log('Запись не найдена');
+      return res.status(404).json({ message: 'Запись не найдена' });
+    }
+    
+    console.log('Запись найдена, начинаем генерацию PDF');
+    console.log('Данные записи:', {
+      код_окэд: record.код_окэд,
+      вид_деятельности: record.вид_деятельности
+    });
+    
+    // Создаем PDF документ с поддержкой кириллицы
+    const doc = createPdfDocument();
+
+    // Настраиваем заголовки для скачивания
+    res.setHeader('Content-Type', 'application/pdf; charset=utf-8');
+    res.setHeader('Content-Disposition', `attachment; filename*=UTF-8''${encodeURIComponent(`detail-report-${record.код_окэд.replace(/[\/\\]/g, '-')}-${Date.now()}.pdf`)}`);
+
+    // Направляем PDF прямо в response
+    doc.pipe(res);
+    
+    // Оформление заголовка
+    doc.font('PTSans-Bold')
+       .fontSize(STYLES.fontSize.title)
+       .text(processText(`Детальная информация: ${record.вид_деятельности}`), {
+      align: 'center',
+      underline: true
+    });
+    doc.moveDown();
+    
+    // Дата создания
+    const now = new Date();
+    doc.font('PTSans')
+       .fontSize(STYLES.fontSize.small)
+       .text(processText(`Дата создания: ${now.toLocaleDateString()} ${now.toLocaleTimeString()}`), {
+      align: 'right'
+    });
+    doc.moveDown(2);
+    
+    // Информация о записи в виде таблицы
+    let y = doc.y;
+    
+    // Функция для добавления строки таблицы
+    const addTableRow = (label, value, format = null) => {
+      doc.font('PTSans')
+         .fontSize(STYLES.fontSize.text)
+         .text(processText(label), startX, y, { width: labelWidth, continued: false });
+      const displayValue = format ? format(value) : processText(value);
+      doc.text(displayValue, startX + labelWidth + 10, y, { width: valueWidth - 10 });
+      y += 20;
+    };
+    
+    // Добавляем данные
+    addTableRow('Код ОКЭД:', record.код_окэд);
+    addTableRow('Вид деятельности:', record.вид_деятельности);
+    y += 10; // Добавляем дополнительный отступ после вида деятельности
+    addTableRow('Количество НП:', record.количество_нп, formatNumber);
+    addTableRow('Средняя численность работников:', record.средняя_численность_работников, formatNumber);
+    addTableRow('Сумма по полю ФОТ:', record['Сумма по полю ФОТ'], (val) => formatNumber(Math.round(val)) + ' тг.');
+    addTableRow('Средняя зарплата:', record.Сумма_по_полю_ср_зп, (val) => formatNumber(Math.round(val)) + ' тг.');
+    addTableRow('Сумма налогов:', record.сумма_налогов, (val) => formatNumber(Math.round(val)) + ' тг.');
+    addTableRow('Удельный вес:', record.удельный_вес, (val) => val + '%');
+    addTableRow('Дата создания записи:', new Date(record.createdAt).toLocaleString());
+    addTableRow('Дата обновления записи:', new Date(record.updatedAt).toLocaleString());
+    
+    // Добавляем разделительную линию
+    doc.moveTo(50, y).lineTo(550, y).stroke();
+    
+    // Завершаем документ
+    doc.end();
+  } catch (error) {
+    console.error('Ошибка при генерации детального PDF:', error);
+    console.error('Стек вызовов:', error.stack);
+    res.status(500).json({ 
+      message: 'Ошибка при генерации PDF', 
+      error: error.message,
+      stack: error.stack
+    });
+  }
+};
+
+exports.generateMultipleDetailPdf = async (req, res) => {
+  try {
+    console.log('Начало генерации PDF для нескольких записей...');
+    const { ids } = req.body;
+    console.log('Полученные ID:', ids);
+    
+    if (!ids || !Array.isArray(ids) || ids.length === 0) {
+      console.log('Ошибка: массив ID не предоставлен или пуст');
+      return res.status(400).json({ message: 'Необходимо предоставить массив идентификаторов записей' });
+    }
+    
+    // Получаем данные выбранных записей с явным указанием всех необходимых полей
+    console.log('Выполняем запрос к базе данных...');
+    const records = await Сводная.findAll({
+      attributes: [
+        'id',
+        'код_окэд',
+        'вид_деятельности',
+        'количество_нп',
+        'средняя_численность_работников',
+        'Сумма по полю ФОТ',
+        'Сумма_по_полю_ср_зп',
+        'сумма_налогов'
+      ],
+      where: {
+        id: {
+          [Op.in]: ids
+        }
+      },
+      order: [['код_окэд', 'ASC']]
+    });
+
+    console.log('Пример первой записи:', JSON.stringify(records[0], null, 2));
+    
+    // Проверяем наличие и валидность шрифтов перед генерацией PDF
+    validateFonts();
+    
+    if (records.length === 0) {
+      console.log('Записи не найдены');
+      return res.status(404).json({ message: 'Записи не найдены' });
+    }
+    
+    console.log(`Найдено ${records.length} записей, начинаем генерацию PDF`);
+    
+    // Создаем PDF документ
+    const doc = createPdfDocument();
+
+    // Настраиваем заголовки для скачивания
+    res.setHeader('Content-Type', 'application/pdf; charset=utf-8');
+    res.setHeader('Content-Disposition', `attachment; filename*=UTF-8''${encodeURIComponent(`multi-report-${Date.now()}.pdf`)}`);
+
+    // Обработчик ошибок для потока
+    doc.on('error', (error) => {
+      console.error('Ошибка при генерации PDF:', error);
+      if (!res.headersSent) {
+        res.status(500).json({ 
+          message: 'Ошибка при генерации PDF', 
+          error: error.message 
+        });
+      }
+    });
+
+    // Направляем PDF в response
+    doc.pipe(res);
+    
+    // Оформление заголовка
+    doc.font('PTSans-Bold')
+       .fontSize(STYLES.fontSize.title)
+       .text(processText(`Отчет по выбранным записям (${records.length})`), {
+      align: 'center',
+      underline: true
+    });
+    doc.moveDown();
+    
+    // Дата создания
+    const now = new Date();
+    doc.font('PTSans')
+       .fontSize(STYLES.fontSize.text)
+       .text(processText(`Дата создания: ${now.toLocaleDateString()} ${now.toLocaleTimeString()}`), {
+      align: 'right'
+    });
+    doc.moveDown(2);
+
+    let y = doc.y;
+
+    // Отрисовка заголовков таблицы
+    y = drawTableHeaders(doc, y);
+
+    // Рисуем данные таблицы
+    let rowIndex = 0;
+    const availablePageHeight = doc.page.height - pageMargin - footerHeight;
+    
+    for (const row of records) {
+      // Добавляем отладочное логирование
+      console.log('Данные записи:', {
+        код_окэд: row.код_окэд,
+        фот: row.getDataValue ? row.getDataValue('Сумма по полю ФОТ') : row['Сумма по полю ФОТ'],
+        тип_фот: typeof (row.getDataValue ? row.getDataValue('Сумма по полю ФОТ') : row['Сумма по полю ФОТ']),
+        ср_зп: row.Сумма_по_полю_ср_зп
+      });
+
+      // Вычисляем высоту текущей записи
+      let деятельность = processText(row.вид_деятельности);
+      const linesCount = Math.ceil(деятельность.length / 22);
+      const estimatedHeight = Math.max(20, linesCount * 12 + 10);
+      
+      // Обрабатываем длинные названия с добавлением переносов
+      let lines = [];
+      let words = деятельность.split(' ');
+      let currentLine = '';
+      const maxLineLength = 20;
+      
+      for (let word of words) {
+        word = word.trim();
+        if (!word) continue;
+        
+        if (word.length > maxLineLength) {
+          if (currentLine) {
+            lines.push(currentLine.trim());
+            currentLine = '';
+          }
+          
+          while (word.length > maxLineLength - 1) {
+            const breakPoint = maxLineLength - 1;
+            lines.push(word.substring(0, breakPoint) + '-');
+            word = word.substring(breakPoint);
+          }
+          currentLine = word;
+        } else {
+          if (!currentLine) {
+            currentLine = word;
+          } else if ((currentLine + ' ' + word).length <= maxLineLength) {
+            currentLine += ' ' + word;
+          } else {
+            lines.push(currentLine.trim());
+            currentLine = word;
+          }
+        }
+      }
+      
+      if (currentLine) {
+        lines.push(currentLine.trim());
+      }
+
+      const extraPadding = Math.max(0, lines.length - 1) * 2;
+      const totalHeight = Math.max(lines.length * lineHeight + extraPadding, minHeight);
+      let rowTotalHeight = totalHeight + 8;
+
+      // Проверяем необходимость новой страницы
+      if (y + rowTotalHeight > doc.page.height - footerHeight - 20) {
+        if (rowIndex < records.length - 1) {
+        doc.addPage();
+          y = pageMargin;
+          y = drawTableHeaders(doc, y);
+        }
+      }
+
+      const positions = calculatePositions();
+
+      // Код ОКЭД
+      doc.text(processText(row.код_окэд), positions.код_окэд, y, { 
+        width: STYLES.table.columns.код_окэд,
+        align: 'left',
+        characterSpacing: STYLES.spacing.characterSpacing
+      });
+
+      // Вид деятельности
+      doc.text(lines.join('\n'), positions.вид_деятельности, y, { 
+        width: STYLES.table.columns.вид_деятельности,
+        align: 'left',
+        characterSpacing: STYLES.spacing.characterSpacing,
+        lineGap: 0,
+        paragraphGap: 0
+      });
+
+      // Количество
+      doc.text(formatNumber(row.количество_нп || 0), positions.количество_нп, y, { 
+        width: STYLES.table.columns.количество_нп,
+        align: 'right',
+        characterSpacing: STYLES.spacing.characterSpacing
+      });
+
+      // Численность
+      const численность = parseFloat(row.средняя_численность_работников) || 0;
+      doc.text(formatNumber(численность), positions.численность, y, { 
+        width: STYLES.table.columns.средняя_численность_работников,
+        align: 'right',
+        characterSpacing: STYLES.spacing.characterSpacing
+      });
+
+      // ФОТ
+      const фот = row['Сумма по полю ФОТ'];
+      console.log('Значение ФОТ из БД для записи', row.код_окэд, ':', фот, typeof фот);
+      
+      if (фот !== null && фот !== undefined) {
+        const фотValue = Number(фот);
+        if (!isNaN(фотValue)) {
+          doc.text(formatNumber(фотValue), positions.фот, y, { 
+            width: STYLES.table.columns['Сумма по полю ФОТ'],
+            align: 'right',
+            characterSpacing: STYLES.spacing.characterSpacing
+          });
+        } else {
+          doc.text('-', positions.фот, y, { 
+            width: STYLES.table.columns['Сумма по полю ФОТ'],
+            align: 'right',
+            characterSpacing: STYLES.spacing.characterSpacing
+          });
+        }
+      } else {
+        doc.text('-', positions.фот, y, { 
+          width: STYLES.table.columns['Сумма по полю ФОТ'],
+          align: 'right',
+          characterSpacing: STYLES.spacing.characterSpacing
+        });
+      }
+
+      // Средняя зарплата
+      const срЗп = row.Сумма_по_полю_ср_зп;
+      if (срЗп !== null && срЗп !== undefined) {
+        const срЗпValue = Number(срЗп);
+        if (!isNaN(срЗпValue)) {
+          doc.text(formatNumber(срЗпValue), positions.ср_зп, y, { 
+            width: STYLES.table.columns.Сумма_по_полю_ср_зп,
+            align: 'right',
+            characterSpacing: STYLES.spacing.characterSpacing
+          });
+        } else {
+          doc.text('-', positions.ср_зп, y, { 
+            width: STYLES.table.columns.Сумма_по_полю_ср_зп,
+            align: 'right',
+            characterSpacing: STYLES.spacing.characterSpacing
+          });
+        }
+      } else {
+        doc.text('-', positions.ср_зп, y, { 
+          width: STYLES.table.columns.Сумма_по_полю_ср_зп,
+          align: 'right',
+          characterSpacing: STYLES.spacing.characterSpacing
+        });
+      }
+
+      // Обновляем позицию для следующей строки
+      y += rowTotalHeight;
+
+      // Добавляем разделитель после каждой строки
+      doc.moveTo(STYLES.table.startX, y)
+         .lineTo(STYLES.table.startX + STYLES.table.width, y)
+         .lineWidth(0.25)
+         .stroke();
+      
+      y += 5;
+      rowIndex++;
+    }
+
+    // Добавляем нижнюю линию таблицы
+    doc.moveTo(STYLES.table.startX, y)
+       .lineTo(STYLES.table.startX + STYLES.table.width, y)
+       .lineWidth(1)
+       .stroke();
+    y += 10; // Добавляем небольшой отступ перед сводкой
+    
+    // Проверяем, поместится ли сводная информация на текущей странице
+    const summaryHeight = STYLES.spacing.summaryLineGap * 7; // Примерная высота всей сводной информации
+    const remainingSpace = doc.page.height - footerHeight - y;
+
+    // Добавляем отступ перед сводкой
+    y += 10;
+    
+    doc.fontSize(STYLES.fontSize.text)
+       .text('Сводная информация по выбранным записям:', STYLES.table.startX, y, { 
+         underline: true,
+         continued: false
+       });
+    doc.text(processText(''), STYLES.table.startX, y, { continued: false });
+    y += STYLES.spacing.summaryLineGap;
+    
+    // Вычисляем суммарные показатели
+    const totalNp = records.reduce((sum, row) => sum + (Number(row.количество_нп) || 0), 0);
+    const totalEmployees = records.reduce((sum, row) => sum + (Number(row.средняя_численность_работников) || 0), 0);
+    const totalFund = records.reduce((sum, row) => {
+      const фот = row['Сумма по полю ФОТ'];
+      return фот ? sum + Number(фот) : sum;
+    }, 0);
+    const avgSalary = totalEmployees > 0 ? Math.round(totalFund / totalEmployees) : 0;
+    const totalTax = records.reduce((sum, row) => sum + (Number(row.сумма_налогов) || 0), 0);
+    
+    // Выводим статистику
+    const summaryItems = [
+      `Общее количество НП: ${formatNumber(totalNp)}`,
+      `Общая численность работников: ${formatNumber(totalEmployees)}`,
+      `Общий фонд оплаты труда: ${formatNumber(Math.round(totalFund))} тг.`,
+      `Средняя заработная плата: ${formatNumber(avgSalary)} тг.`,
+      `Общая сумма налогов: ${formatNumber(Math.round(totalTax))} тг.`
+    ];
+    
+    // Выводим каждый элемент с отступом
+    summaryItems.forEach(item => {
+      doc.text(item, STYLES.table.startX, y, {
+        continued: false,
+        lineGap: 0
+      });
+      y += STYLES.spacing.summaryLineGap;
+    });
+    
+    // Завершаем документ
+    doc.end();
+  } catch (error) {
+    console.error('Ошибка при генерации PDF:', error);
+    console.error('Стек вызовов:', error.stack);
+    if (!res.headersSent) {
+    res.status(500).json({ 
+      message: 'Ошибка при генерации PDF', 
+      error: error.message,
+      stack: error.stack
+    });
+    }
+  }
+}; 
