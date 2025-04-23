@@ -19,8 +19,8 @@ const ExportButtons: React.FC<ExportButtonsProps> = ({ selectedIds, filter }) =>
       console.log('Начинаем экспорт всех данных в PDF');
       // URL с фильтром, если он есть
       const url = filter 
-        ? `/data/export/pdf?filter=${encodeURIComponent(filter)}`
-        : '/data/export/pdf';
+        ? `/pdf/generate?filter=${encodeURIComponent(filter)}`
+        : '/pdf/generate';
       
       console.log('URL запроса:', url);
       console.log('Токен авторизации:', token ? 'Токен получен' : 'Токен отсутствует');
@@ -32,21 +32,34 @@ const ExportButtons: React.FC<ExportButtonsProps> = ({ selectedIds, filter }) =>
         method: 'GET',
         responseType: 'blob', // Важно для бинарных данных
         headers: {
-          Authorization: `Bearer ${token}`
+          Authorization: `Bearer ${token}`,
+          'Accept': 'application/pdf'
         }
       });
       
       console.log('Ответ получен:', response.status, response.statusText);
       console.log('Размер полученных данных:', response.data.size);
+      console.log('Тип данных:', response.headers['content-type']);
+
+      if (!response.data || response.data.size === 0) {
+        throw new Error('Получен пустой ответ от сервера');
+      }
 
       // Создаем ссылку для скачивания файла
-      const downloadUrl = window.URL.createObjectURL(new Blob([response.data]));
+      const blob = new Blob([response.data], { type: 'application/pdf' });
+      const downloadUrl = window.URL.createObjectURL(blob);
       const link = document.createElement('a');
       link.href = downloadUrl;
       link.setAttribute('download', `report-${Date.now()}.pdf`);
       document.body.appendChild(link);
       link.click();
-      link.remove();
+      
+      // Очищаем URL и удаляем ссылку
+      setTimeout(() => {
+        window.URL.revokeObjectURL(downloadUrl);
+        link.remove();
+      }, 100);
+      
       console.log('Файл скачивается...');
     } catch (error: any) {
       console.error('Ошибка при экспорте в PDF:', error);
@@ -92,15 +105,27 @@ const ExportButtons: React.FC<ExportButtonsProps> = ({ selectedIds, filter }) =>
       
       console.log('Ответ получен:', response.status, response.statusText);
       console.log('Размер полученных данных:', response.data.size);
+      console.log('Тип данных:', response.headers['content-type']);
+
+      if (!response.data || response.data.size === 0) {
+        throw new Error('Получен пустой ответ от сервера');
+      }
 
       // Создаем ссылку для скачивания файла
-      const downloadUrl = window.URL.createObjectURL(new Blob([response.data]));
+      const blob = new Blob([response.data], { type: 'application/pdf' });
+      const downloadUrl = window.URL.createObjectURL(blob);
       const link = document.createElement('a');
       link.href = downloadUrl;
       link.setAttribute('download', `detail-report-${Date.now()}.pdf`);
       document.body.appendChild(link);
       link.click();
-      link.remove();
+      
+      // Очищаем URL и удаляем ссылку
+      setTimeout(() => {
+        window.URL.revokeObjectURL(downloadUrl);
+        link.remove();
+      }, 100);
+      
       console.log('Файл скачивается...');
     } catch (error: any) {
       console.error('Ошибка при экспорте выбранной записи в PDF:', error);
@@ -142,15 +167,27 @@ const ExportButtons: React.FC<ExportButtonsProps> = ({ selectedIds, filter }) =>
       
       console.log('Ответ получен:', response.status, response.statusText);
       console.log('Размер полученных данных:', response.data.size);
+      console.log('Тип данных:', response.headers['content-type']);
+
+      if (!response.data || response.data.size === 0) {
+        throw new Error('Получен пустой ответ от сервера');
+      }
 
       // Создаем ссылку для скачивания файла
-      const downloadUrl = window.URL.createObjectURL(new Blob([response.data]));
+      const blob = new Blob([response.data], { type: 'application/pdf' });
+      const downloadUrl = window.URL.createObjectURL(blob);
       const link = document.createElement('a');
       link.href = downloadUrl;
       link.setAttribute('download', `multi-report-${Date.now()}.pdf`);
       document.body.appendChild(link);
       link.click();
-      link.remove();
+      
+      // Очищаем URL и удаляем ссылку
+      setTimeout(() => {
+        window.URL.revokeObjectURL(downloadUrl);
+        link.remove();
+      }, 100);
+      
       console.log('Файл скачивается...');
     } catch (error: any) {
       console.error('Ошибка при экспорте выбранных записей в PDF:', error);

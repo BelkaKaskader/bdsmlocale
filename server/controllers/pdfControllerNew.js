@@ -3,6 +3,9 @@ const path = require('path');
 const { Сводная } = require('../models');
 const { Op } = require('sequelize');
 const fs = require('fs');
+const { FONTS } = require('../config/fonts');
+const { processText } = require('../utils/textProcessor');
+const { generateBarChart, generatePieChart } = require('../utils/chartGenerator');
 
 // Общие константы для форматирования PDF
 const lineHeight = 12; // Высота строки
@@ -49,15 +52,6 @@ const formatNumber = (num) => {
   return new Intl.NumberFormat('ru-RU').format(num);
 };
 
-// Определение путей к шрифтам
-const FONTS = {
-  regular: path.join(__dirname, '../fonts/PTSans-Regular.ttf'),
-  bold: path.join(__dirname, '../fonts/PTSans-Bold.ttf'),
-  arial: path.join(__dirname, '../fonts/arial.ttf'),
-  dejavu: path.join(__dirname, '../fonts/DejaVuSans.ttf'),
-  dejavuBold: path.join(__dirname, '../fonts/DejaVuSans-Bold.ttf')
-};
-
 // Проверка наличия шрифтов и их валидация
 const validateFonts = () => {
   const missingFonts = [];
@@ -82,15 +76,6 @@ const validateFonts = () => {
   if (missingFonts.length > 0) {
     throw new Error(`Отсутствуют или повреждены следующие шрифты: ${missingFonts.join(', ')}`);
   }
-};
-
-// Функция для обработки текста перед добавлением в PDF
-const processText = (text) => {
-  if (!text) return '';
-  return String(text)
-    .normalize('NFKC')
-    .replace(/[\u0000-\u0008\u000B-\u000C\u000E-\u001F]/g, '')
-    .trim();
 };
 
 // Создание и настройка PDF документа
@@ -205,6 +190,21 @@ const calculatePositions = () => {
   return positions;
 };
 
+const prepareChartData = (records) => {
+  const totalFund = records.reduce((sum, row) => sum + Number(row['Сумма по полю ФОТ'] || 0), 0);
+  const sortedData = [...records].sort((a, b) => 
+    Number(b.средняя_численность_работников || 0) - Number(a.средняя_численность_работников || 0)
+  );
+
+  return sortedData.slice(0, 10).map(row => ({
+    name: row.вид_деятельности.length > 30 
+      ? row.вид_деятельности.substring(0, 30) + '...'
+      : row.вид_деятельности,
+    value: Number(row.средняя_численность_работников || 0),
+    fundValue: Number(row['Сумма по полю ФОТ'] || 0),
+    salaryValue: Number(row.Сумма_по_полю_ср_зп || 0)
+  }));
+};
 
 exports.generatePdf = async (req, res) => {
   try {
@@ -497,6 +497,338 @@ exports.generatePdf = async (req, res) => {
       );
         }
       }
+
+      // Генерируем диаграммы для всех показателей
+      const chartDataWorkers = prepareChartData(records);
+      
+      // Генерируем данные для средней зарплаты
+      const chartDataSalary = records.map(row => ({
+        name: row.вид_деятельности.length > 30 
+          ? row.вид_деятельности.substring(0, 30) + '...'
+          : row.вид_деятельности,
+        value: Number(row.Сумма_по_полю_ср_зп || 0)
+      })).sort((a, b) => b.value - a.value).slice(0, 10);
+
+      // Генерируем данные для ФОТ
+      const chartDataFOT = records.map(row => ({
+        name: row.вид_деятельности.length > 30 
+          ? row.вид_деятельности.substring(0, 30) + '...'
+          : row.вид_деятельности,
+        value: Number(row['Сумма по полю ФОТ'] || 0)
+      })).sort((a, b) => b.value - a.value).slice(0, 10);
+
+      // Генерируем все диаграммы
+      const [barChartWorkers, pieChartWorkers, barChartSalary, pieChartSalary, barChartFOT, pieChartFOT] = await Promise.all([
+        generateBarChart(chartDataWorkers, 'Распределение численности работников', 'Численность работников'),
+        generatePieChart(chartDataWorkers, 'Распределение численности работников'),
+        generateBarChart(chartDataSalary, 'Распределение средней заработной платы', 'Средняя заработная плата'),
+        generatePieChart(chartDataSalary, 'Распределение средней заработной платы'),
+        generateBarChart(chartDataFOT, 'Распределение фонда оплаты труда', 'ФОТ'),
+        generatePieChart(chartDataFOT, 'Распределение фонда оплаты труда')
+      ]);
+
+      // Добавляем диаграммы численности работников
+      doc.fontSize(14).font('PTSans-Bold').text('Диаграммы распределения численности работников', {
+        align: 'center'
+      });
+      doc.moveDown();
+      
+      doc.image(barChartWorkers, {
+        fit: [500, 250],
+        align: 'center'
+      });
+      doc.moveDown();
+      
+      doc.image(pieChartWorkers, {
+        fit: [500, 250],
+        align: 'center'
+      });
+      doc.moveDown();
+
+      // Добавляем диаграммы средней заработной платы
+      doc.addPage();
+      doc.fontSize(14).font('PTSans-Bold').text('Диаграммы распределения средней заработной платы', {
+        align: 'center'
+      });
+      doc.moveDown();
+      
+      doc.image(barChartSalary, {
+        fit: [500, 250],
+        align: 'center'
+      });
+      doc.moveDown();
+      
+      doc.image(pieChartSalary, {
+        fit: [500, 250],
+        align: 'center'
+      });
+      doc.moveDown();
+
+      // Добавляем диаграммы ФОТ
+      doc.addPage();
+      doc.fontSize(14).font('PTSans-Bold').text('Диаграммы распределения фонда оплаты труда', {
+        align: 'center'
+      });
+      doc.moveDown();
+      
+      doc.image(barChartFOT, {
+        fit: [500, 250],
+        align: 'center'
+      });
+      doc.moveDown();
+      
+      doc.image(pieChartFOT, {
+        fit: [500, 250],
+        align: 'center'
+      });
+      doc.moveDown();
+
+      // Добавляем новую страницу для таблицы
+      doc.addPage();
+
+      // Добавляем информацию о количестве записей
+      doc.fontSize(STYLES.fontSize.text)
+         .text(processText(`Всего записей: ${records.length}`), {
+        align: 'left',
+           characterSpacing: STYLES.spacing.characterSpacing
+      });
+      doc.moveDown();
+
+      // Инициализируем переменные для таблицы
+      let tableY = doc.y;
+      let currentRowIndex = 0;
+      const tableAvailableHeight = doc.page.height - pageMargin - footerHeight;
+
+      // Отрисовка заголовков таблицы через общую функцию
+      tableY = drawTableHeaders(doc, tableY);
+
+      // Рисуем данные таблицы
+      for (const row of records) {
+        // Добавляем отладочное логирование
+        console.log('Данные записи:', {
+          код_окэд: row.код_окэд,
+          фот: row.getDataValue ? row.getDataValue('Сумма по полю ФОТ') : row['Сумма по полю ФОТ'],
+          тип_фот: typeof (row.getDataValue ? row.getDataValue('Сумма по полю ФОТ') : row['Сумма по полю ФОТ']),
+          ср_зп: row.Сумма_по_полю_ср_зп
+        });
+
+        // Вычисляем высоту текущей записи
+        let деятельность = processText(row.вид_деятельности);
+        const linesCount = Math.ceil(деятельность.length / 22);
+        const estimatedHeight = Math.max(20, linesCount * 12 + 10);
+        
+        // Обрабатываем длинные названия с добавлением переносов
+        let lines = [];
+        let words = деятельность.split(' ');
+        let currentLine = '';
+        const maxLineLength = 20;
+        
+        for (let word of words) {
+          word = word.trim();
+          if (!word) continue;
+          
+          if (word.length > maxLineLength) {
+            if (currentLine) {
+              lines.push(currentLine.trim());
+              currentLine = '';
+            }
+            
+            while (word.length > maxLineLength - 1) {
+              const breakPoint = maxLineLength - 1;
+              lines.push(word.substring(0, breakPoint) + '-');
+              word = word.substring(breakPoint);
+            }
+            currentLine = word;
+          } else {
+            if (!currentLine) {
+              currentLine = word;
+            } else if ((currentLine + ' ' + word).length <= maxLineLength) {
+              currentLine += ' ' + word;
+            } else {
+              lines.push(currentLine.trim());
+              currentLine = word;
+            }
+          }
+        }
+        
+        if (currentLine) {
+          lines.push(currentLine.trim());
+        }
+
+        const extraPadding = Math.max(0, lines.length - 1) * 2;
+        const totalHeight = Math.max(lines.length * lineHeight + extraPadding, minHeight);
+        let rowTotalHeight = totalHeight + 8;
+
+        // Проверяем необходимость новой страницы
+        if (tableY + rowTotalHeight > doc.page.height - footerHeight - 20) {
+          if (currentRowIndex < records.length - 1) {
+          doc.addPage();
+            tableY = pageMargin;
+            tableY = drawTableHeaders(doc, tableY);
+          }
+        }
+
+        const positions = calculatePositions();
+
+        // Код ОКЭД
+        doc.text(processText(row.код_окэд), positions.код_окэd, tableY, { 
+          width: STYLES.table.columns.код_окэд,
+          align: 'left',
+          characterSpacing: STYLES.spacing.characterSpacing
+        });
+
+        // Вид деятельности
+        doc.text(lines.join('\n'), positions.вид_деятельности, tableY, { 
+          width: STYLES.table.columns.вид_деятельности,
+          align: 'left',
+          characterSpacing: STYLES.spacing.characterSpacing,
+          lineGap: 0,
+          paragraphGap: 0
+        });
+
+        // Количество
+        doc.text(formatNumber(row.количество_нп || 0), positions.количество_нп, tableY, { 
+          width: STYLES.table.columns.количество_нп,
+          align: 'right',
+          characterSpacing: STYLES.spacing.characterSpacing
+        });
+
+        // Численность
+        const численность = parseFloat(row.средняя_численность_работников) || 0;
+        doc.text(formatNumber(численность), positions.численность, tableY, { 
+          width: STYLES.table.columns.средняя_численность_работников,
+          align: 'right',
+          characterSpacing: STYLES.spacing.characterSpacing
+        });
+
+        // ФОТ
+        const фот = row['Сумма по полю ФОТ'];
+        console.log('Значение ФОТ из БД для записи', row.код_окэд, ':', фот, typeof фот);
+        
+        if (фот !== null && фот !== undefined) {
+          const фотValue = Number(фот);
+          if (!isNaN(фотValue)) {
+            doc.text(formatNumber(фотValue), positions.фот, tableY, { 
+              width: STYLES.table.columns['Сумма по полю ФОТ'],
+              align: 'right',
+              characterSpacing: STYLES.spacing.characterSpacing
+            });
+          } else {
+            doc.text('-', positions.фот, tableY, { 
+              width: STYLES.table.columns['Сумма по полю ФОТ'],
+              align: 'right',
+              characterSpacing: STYLES.spacing.characterSpacing
+            });
+          }
+        } else {
+          doc.text('-', positions.фот, tableY, { 
+            width: STYLES.table.columns['Сумма по полю ФОТ'],
+            align: 'right',
+            characterSpacing: STYLES.spacing.characterSpacing
+          });
+        }
+
+        // Средняя зарплата
+        const срЗп = row.Сумма_по_полю_ср_зп;
+        if (срЗп !== null && срЗп !== undefined) {
+          const срЗпValue = Number(срЗп);
+          if (!isNaN(срЗпValue)) {
+            doc.text(formatNumber(срЗпValue), positions.ср_зп, tableY, { 
+              width: STYLES.table.columns.Сумма_по_полю_ср_зп,
+              align: 'right',
+              characterSpacing: STYLES.spacing.characterSpacing
+            });
+          } else {
+            doc.text('-', positions.ср_зп, tableY, { 
+              width: STYLES.table.columns.Сумма_по_полю_ср_зп,
+              align: 'right',
+              characterSpacing: STYLES.spacing.characterSpacing
+            });
+          }
+        } else {
+          doc.text('-', positions.ср_зп, tableY, { 
+            width: STYLES.table.columns.Сумма_по_полю_ср_зп,
+            align: 'right',
+            characterSpacing: STYLES.spacing.characterSpacing
+          });
+        }
+
+        // Обновляем позицию для следующей строки
+        tableY += rowTotalHeight;
+
+        // Добавляем разделитель после каждой строки
+        doc.moveTo(STYLES.table.startX, tableY)
+           .lineTo(STYLES.table.startX + STYLES.table.width, tableY)
+           .lineWidth(0.25)
+           .stroke();
+        
+        tableY += 5;
+        currentRowIndex++;
+      }
+
+      // Добавляем нижнюю линию таблицы
+      doc.moveTo(STYLES.table.startX, tableY)
+         .lineTo(STYLES.table.startX + STYLES.table.width, tableY)
+         .lineWidth(1)
+         .stroke();
+      tableY += 10; // Добавляем небольшой отступ перед сводкой
+      
+      // Сводная информация
+      doc.moveDown();
+      doc.fontSize(12)
+         .font('PTSans-Bold')
+         .text('Сводная информация по выбранным записям:', STYLES.table.startX, tableY, {
+             underline: true
+         });
+
+      // Добавляем небольшой отступ после заголовка
+      tableY = doc.y + 5; // Уменьшаем отступ с 10 до 5 пунктов
+
+      // Вычисляем общие значения
+      const totalNP = records.reduce((sum, r) => {
+          const value = Number(r.количество_нп);
+          return sum + (isNaN(value) ? 0 : value);
+      }, 0);
+
+      const totalWorkers = records.reduce((sum, r) => {
+          const value = Number(r.средняя_численность_работников);
+          return sum + (isNaN(value) ? 0 : value);
+      }, 0);
+
+      const totalFOT = records.reduce((sum, r) => {
+          const value = Number(r['Сумма по полю ФОТ']);
+          return sum + (isNaN(value) ? 0 : value);
+      }, 0);
+
+      // Берем среднюю зарплату напрямую из БД
+      const avgSalary = records.reduce((sum, r) => {
+          const value = Number(r.Сумма_по_полю_ср_зп);
+          return sum + (isNaN(value) ? 0 : value);
+      }, 0) / records.length;
+
+      const totalTaxes = records.reduce((sum, r) => {
+          const value = Number(r.сумма_налогов);
+          return sum + (isNaN(value) ? 0 : value);
+      }, 0);
+
+      // Формируем и выводим сводную информацию одним блоком с отступом слева
+      doc.font('PTSans')
+         .text(
+             `Общее количество НП: ${formatNumber(totalNP)}\n` +
+             `Общая численность работников: ${formatNumber(totalWorkers)}\n` +
+             `Общий фонд оплаты труда: ${formatNumber(Math.round(totalFOT))} тг.\n` +
+             `Средняя заработная плата: ${formatNumber(Math.round(avgSalary))} тг.\n` +
+             `Общая сумма налогов: ${formatNumber(Math.round(totalTaxes))} тг.`,
+             STYLES.table.startX,
+             tableY,
+             {
+                 align: 'left',
+                 width: STYLES.table.width
+             }
+         );
+
+      // Добавляем дату генерации
+      doc.moveDown(2);
     }
 
     // Завершаем документ
@@ -612,47 +944,27 @@ exports.generateDetailPdf = async (req, res) => {
 
 exports.generateMultipleDetailPdf = async (req, res) => {
   try {
-    console.log('Начало генерации PDF для нескольких записей...');
+    console.log('Начало генерации PDF для нескольких записей');
     const { ids } = req.body;
-    console.log('Полученные ID:', ids);
     
     if (!ids || !Array.isArray(ids) || ids.length === 0) {
-      console.log('Ошибка: массив ID не предоставлен или пуст');
       return res.status(400).json({ message: 'Необходимо предоставить массив идентификаторов записей' });
     }
     
-    // Получаем данные выбранных записей с явным указанием всех необходимых полей
-    console.log('Выполняем запрос к базе данных...');
+    // Получаем данные выбранных записей
     const records = await Сводная.findAll({
-      attributes: [
-        'id',
-        'код_окэд',
-        'вид_деятельности',
-        'количество_нп',
-        'средняя_численность_работников',
-        'Сумма по полю ФОТ',
-        'Сумма_по_полю_ср_зп',
-        'сумма_налогов'
-      ],
       where: {
         id: {
           [Op.in]: ids
         }
       },
-      order: [['код_окэд', 'ASC']]
+      order: [['код_окэд', 'ASC']],
+      charset: 'utf8'
     });
-
-    console.log('Пример первой записи:', JSON.stringify(records[0], null, 2));
-    
-    // Проверяем наличие и валидность шрифтов перед генерацией PDF
-    validateFonts();
     
     if (records.length === 0) {
-      console.log('Записи не найдены');
       return res.status(404).json({ message: 'Записи не найдены' });
     }
-    
-    console.log(`Найдено ${records.length} записей, начинаем генерацию PDF`);
     
     // Создаем PDF документ
     const doc = createPdfDocument();
@@ -660,17 +972,6 @@ exports.generateMultipleDetailPdf = async (req, res) => {
     // Настраиваем заголовки для скачивания
     res.setHeader('Content-Type', 'application/pdf; charset=utf-8');
     res.setHeader('Content-Disposition', `attachment; filename*=UTF-8''${encodeURIComponent(`multi-report-${Date.now()}.pdf`)}`);
-
-    // Обработчик ошибок для потока
-    doc.on('error', (error) => {
-      console.error('Ошибка при генерации PDF:', error);
-      if (!res.headersSent) {
-        res.status(500).json({ 
-          message: 'Ошибка при генерации PDF', 
-          error: error.message 
-        });
-      }
-    });
 
     // Направляем PDF в response
     doc.pipe(res);
@@ -691,17 +992,113 @@ exports.generateMultipleDetailPdf = async (req, res) => {
        .text(processText(`Дата создания: ${now.toLocaleDateString()} ${now.toLocaleTimeString()}`), {
       align: 'right'
     });
-    doc.moveDown(2);
+    doc.moveDown();
 
-    let y = doc.y;
+    // Генерируем диаграммы для всех показателей
+    const chartDataWorkers = prepareChartData(records);
+    
+    // Генерируем данные для средней зарплаты
+    const chartDataSalary = records.map(row => ({
+      name: row.вид_деятельности.length > 30 
+        ? row.вид_деятельности.substring(0, 30) + '...'
+        : row.вид_деятельности,
+      value: Number(row.Сумма_по_полю_ср_зп || 0)
+    })).sort((a, b) => b.value - a.value).slice(0, 10);
 
-    // Отрисовка заголовков таблицы
-    y = drawTableHeaders(doc, y);
+    // Генерируем данные для ФОТ
+    const chartDataFOT = records.map(row => ({
+      name: row.вид_деятельности.length > 30 
+        ? row.вид_деятельности.substring(0, 30) + '...'
+        : row.вид_деятельности,
+      value: Number(row['Сумма по полю ФОТ'] || 0)
+    })).sort((a, b) => b.value - a.value).slice(0, 10);
+
+    // Генерируем все диаграммы
+    const [barChartWorkers, pieChartWorkers, barChartSalary, pieChartSalary, barChartFOT, pieChartFOT] = await Promise.all([
+      generateBarChart(chartDataWorkers, 'Распределение численности работников', 'Численность работников'),
+      generatePieChart(chartDataWorkers, 'Распределение численности работников'),
+      generateBarChart(chartDataSalary, 'Распределение средней заработной платы', 'Средняя заработная плата'),
+      generatePieChart(chartDataSalary, 'Распределение средней заработной платы'),
+      generateBarChart(chartDataFOT, 'Распределение фонда оплаты труда', 'ФОТ'),
+      generatePieChart(chartDataFOT, 'Распределение фонда оплаты труда')
+    ]);
+
+    // Добавляем диаграммы численности работников
+    doc.fontSize(14).font('PTSans-Bold').text('Диаграммы распределения численности работников', {
+      align: 'center'
+    });
+    doc.moveDown();
+    
+    doc.image(barChartWorkers, {
+      fit: [500, 250],
+      align: 'center'
+    });
+    doc.moveDown();
+    
+    doc.image(pieChartWorkers, {
+      fit: [500, 250],
+      align: 'center'
+    });
+    doc.moveDown();
+
+    // Добавляем диаграммы средней заработной платы
+    doc.addPage();
+    doc.fontSize(14).font('PTSans-Bold').text('Диаграммы распределения средней заработной платы', {
+      align: 'center'
+    });
+    doc.moveDown();
+    
+    doc.image(barChartSalary, {
+      fit: [500, 250],
+      align: 'center'
+    });
+    doc.moveDown();
+    
+    doc.image(pieChartSalary, {
+      fit: [500, 250],
+      align: 'center'
+    });
+    doc.moveDown();
+
+    // Добавляем диаграммы ФОТ
+    doc.addPage();
+    doc.fontSize(14).font('PTSans-Bold').text('Диаграммы распределения фонда оплаты труда', {
+      align: 'center'
+    });
+    doc.moveDown();
+    
+    doc.image(barChartFOT, {
+      fit: [500, 250],
+      align: 'center'
+    });
+    doc.moveDown();
+    
+    doc.image(pieChartFOT, {
+      fit: [500, 250],
+      align: 'center'
+    });
+    doc.moveDown();
+
+    // Добавляем новую страницу для таблицы
+    doc.addPage();
+
+    // Добавляем информацию о количестве записей
+    doc.fontSize(STYLES.fontSize.text)
+       .text(processText(`Всего записей: ${records.length}`), {
+      align: 'left',
+         characterSpacing: STYLES.spacing.characterSpacing
+    });
+    doc.moveDown();
+
+    // Инициализируем переменные для таблицы
+    let tableY = doc.y;
+    let currentRowIndex = 0;
+    const tableAvailableHeight = doc.page.height - pageMargin - footerHeight;
+
+    // Отрисовка заголовков таблицы через общую функцию
+    tableY = drawTableHeaders(doc, tableY);
 
     // Рисуем данные таблицы
-    let rowIndex = 0;
-    const availablePageHeight = doc.page.height - pageMargin - footerHeight;
-    
     for (const row of records) {
       // Добавляем отладочное логирование
       console.log('Данные записи:', {
@@ -759,25 +1156,25 @@ exports.generateMultipleDetailPdf = async (req, res) => {
       let rowTotalHeight = totalHeight + 8;
 
       // Проверяем необходимость новой страницы
-      if (y + rowTotalHeight > doc.page.height - footerHeight - 20) {
-        if (rowIndex < records.length - 1) {
+      if (tableY + rowTotalHeight > doc.page.height - footerHeight - 20) {
+        if (currentRowIndex < records.length - 1) {
         doc.addPage();
-          y = pageMargin;
-          y = drawTableHeaders(doc, y);
+          tableY = pageMargin;
+          tableY = drawTableHeaders(doc, tableY);
         }
       }
 
       const positions = calculatePositions();
 
       // Код ОКЭД
-      doc.text(processText(row.код_окэд), positions.код_окэд, y, { 
+      doc.text(processText(row.код_окэд), positions.код_окэd, tableY, { 
         width: STYLES.table.columns.код_окэд,
         align: 'left',
         characterSpacing: STYLES.spacing.characterSpacing
       });
 
       // Вид деятельности
-      doc.text(lines.join('\n'), positions.вид_деятельности, y, { 
+      doc.text(lines.join('\n'), positions.вид_деятельности, tableY, { 
         width: STYLES.table.columns.вид_деятельности,
         align: 'left',
         characterSpacing: STYLES.spacing.characterSpacing,
@@ -786,7 +1183,7 @@ exports.generateMultipleDetailPdf = async (req, res) => {
       });
 
       // Количество
-      doc.text(formatNumber(row.количество_нп || 0), positions.количество_нп, y, { 
+      doc.text(formatNumber(row.количество_нп || 0), positions.количество_нп, tableY, { 
         width: STYLES.table.columns.количество_нп,
         align: 'right',
         characterSpacing: STYLES.spacing.characterSpacing
@@ -794,7 +1191,7 @@ exports.generateMultipleDetailPdf = async (req, res) => {
 
       // Численность
       const численность = parseFloat(row.средняя_численность_работников) || 0;
-      doc.text(formatNumber(численность), positions.численность, y, { 
+      doc.text(formatNumber(численность), positions.численность, tableY, { 
         width: STYLES.table.columns.средняя_численность_работников,
         align: 'right',
         characterSpacing: STYLES.spacing.characterSpacing
@@ -807,20 +1204,20 @@ exports.generateMultipleDetailPdf = async (req, res) => {
       if (фот !== null && фот !== undefined) {
         const фотValue = Number(фот);
         if (!isNaN(фотValue)) {
-          doc.text(formatNumber(фотValue), positions.фот, y, { 
+          doc.text(formatNumber(фотValue), positions.фот, tableY, { 
             width: STYLES.table.columns['Сумма по полю ФОТ'],
             align: 'right',
             characterSpacing: STYLES.spacing.characterSpacing
           });
         } else {
-          doc.text('-', positions.фот, y, { 
+          doc.text('-', positions.фот, tableY, { 
             width: STYLES.table.columns['Сумма по полю ФОТ'],
             align: 'right',
             characterSpacing: STYLES.spacing.characterSpacing
           });
         }
       } else {
-        doc.text('-', positions.фот, y, { 
+        doc.text('-', positions.фот, tableY, { 
           width: STYLES.table.columns['Сумма по полю ФОТ'],
           align: 'right',
           characterSpacing: STYLES.spacing.characterSpacing
@@ -832,20 +1229,20 @@ exports.generateMultipleDetailPdf = async (req, res) => {
       if (срЗп !== null && срЗп !== undefined) {
         const срЗпValue = Number(срЗп);
         if (!isNaN(срЗпValue)) {
-          doc.text(formatNumber(срЗпValue), positions.ср_зп, y, { 
+          doc.text(formatNumber(срЗпValue), positions.ср_зп, tableY, { 
             width: STYLES.table.columns.Сумма_по_полю_ср_зп,
             align: 'right',
             characterSpacing: STYLES.spacing.characterSpacing
           });
         } else {
-          doc.text('-', positions.ср_зп, y, { 
+          doc.text('-', positions.ср_зп, tableY, { 
             width: STYLES.table.columns.Сумма_по_полю_ср_зп,
             align: 'right',
             characterSpacing: STYLES.spacing.characterSpacing
           });
         }
       } else {
-        doc.text('-', positions.ср_зп, y, { 
+        doc.text('-', positions.ср_зп, tableY, { 
           width: STYLES.table.columns.Сумма_по_полю_ср_зп,
           align: 'right',
           characterSpacing: STYLES.spacing.characterSpacing
@@ -853,68 +1250,82 @@ exports.generateMultipleDetailPdf = async (req, res) => {
       }
 
       // Обновляем позицию для следующей строки
-      y += rowTotalHeight;
+      tableY += rowTotalHeight;
 
       // Добавляем разделитель после каждой строки
-      doc.moveTo(STYLES.table.startX, y)
-         .lineTo(STYLES.table.startX + STYLES.table.width, y)
+      doc.moveTo(STYLES.table.startX, tableY)
+         .lineTo(STYLES.table.startX + STYLES.table.width, tableY)
          .lineWidth(0.25)
          .stroke();
       
-      y += 5;
-      rowIndex++;
+      tableY += 5;
+      currentRowIndex++;
     }
 
     // Добавляем нижнюю линию таблицы
-    doc.moveTo(STYLES.table.startX, y)
-       .lineTo(STYLES.table.startX + STYLES.table.width, y)
+    doc.moveTo(STYLES.table.startX, tableY)
+       .lineTo(STYLES.table.startX + STYLES.table.width, tableY)
        .lineWidth(1)
        .stroke();
-    y += 10; // Добавляем небольшой отступ перед сводкой
+    tableY += 10; // Добавляем небольшой отступ перед сводкой
     
-    // Проверяем, поместится ли сводная информация на текущей странице
-    const summaryHeight = STYLES.spacing.summaryLineGap * 7; // Примерная высота всей сводной информации
-    const remainingSpace = doc.page.height - footerHeight - y;
-
-    // Добавляем отступ перед сводкой
-    y += 10;
-    
-    doc.fontSize(STYLES.fontSize.text)
-       .text('Сводная информация по выбранным записям:', STYLES.table.startX, y, { 
-         underline: true,
-         continued: false
+    // Сводная информация
+    doc.moveDown();
+    doc.fontSize(12)
+       .font('PTSans-Bold')
+       .text('Сводная информация по выбранным записям:', STYLES.table.startX, tableY, {
+           underline: true
        });
-    doc.text(processText(''), STYLES.table.startX, y, { continued: false });
-    y += STYLES.spacing.summaryLineGap;
-    
-    // Вычисляем суммарные показатели
-    const totalNp = records.reduce((sum, row) => sum + (Number(row.количество_нп) || 0), 0);
-    const totalEmployees = records.reduce((sum, row) => sum + (Number(row.средняя_численность_работников) || 0), 0);
-    const totalFund = records.reduce((sum, row) => {
-      const фот = row['Сумма по полю ФОТ'];
-      return фот ? sum + Number(фот) : sum;
+
+    // Добавляем небольшой отступ после заголовка
+    tableY = doc.y + 5; // Уменьшаем отступ с 10 до 5 пунктов
+
+    // Вычисляем общие значения
+    const totalNP = records.reduce((sum, r) => {
+        const value = Number(r.количество_нп);
+        return sum + (isNaN(value) ? 0 : value);
     }, 0);
-    const avgSalary = totalEmployees > 0 ? Math.round(totalFund / totalEmployees) : 0;
-    const totalTax = records.reduce((sum, row) => sum + (Number(row.сумма_налогов) || 0), 0);
-    
-    // Выводим статистику
-    const summaryItems = [
-      `Общее количество НП: ${formatNumber(totalNp)}`,
-      `Общая численность работников: ${formatNumber(totalEmployees)}`,
-      `Общий фонд оплаты труда: ${formatNumber(Math.round(totalFund))} тг.`,
-      `Средняя заработная плата: ${formatNumber(avgSalary)} тг.`,
-      `Общая сумма налогов: ${formatNumber(Math.round(totalTax))} тг.`
-    ];
-    
-    // Выводим каждый элемент с отступом
-    summaryItems.forEach(item => {
-      doc.text(item, STYLES.table.startX, y, {
-        continued: false,
-        lineGap: 0
-      });
-      y += STYLES.spacing.summaryLineGap;
-    });
-    
+
+    const totalWorkers = records.reduce((sum, r) => {
+        const value = Number(r.средняя_численность_работников);
+        return sum + (isNaN(value) ? 0 : value);
+    }, 0);
+
+    const totalFOT = records.reduce((sum, r) => {
+        const value = Number(r['Сумма по полю ФОТ']);
+        return sum + (isNaN(value) ? 0 : value);
+    }, 0);
+
+    // Берем среднюю зарплату напрямую из БД
+    const avgSalary = records.reduce((sum, r) => {
+        const value = Number(r.Сумма_по_полю_ср_зп);
+        return sum + (isNaN(value) ? 0 : value);
+    }, 0) / records.length;
+
+    const totalTaxes = records.reduce((sum, r) => {
+        const value = Number(r.сумма_налогов);
+        return sum + (isNaN(value) ? 0 : value);
+    }, 0);
+
+    // Формируем и выводим сводную информацию одним блоком с отступом слева
+    doc.font('PTSans')
+       .text(
+           `Общее количество НП: ${formatNumber(totalNP)}\n` +
+           `Общая численность работников: ${formatNumber(totalWorkers)}\n` +
+           `Общий фонд оплаты труда: ${formatNumber(Math.round(totalFOT))} тг.\n` +
+           `Средняя заработная плата: ${formatNumber(Math.round(avgSalary))} тг.\n` +
+           `Общая сумма налогов: ${formatNumber(Math.round(totalTaxes))} тг.`,
+           STYLES.table.startX,
+           tableY,
+           {
+               align: 'left',
+               width: STYLES.table.width
+           }
+       );
+
+    // Добавляем дату генерации
+    doc.moveDown(2);
+
     // Завершаем документ
     doc.end();
   } catch (error) {
