@@ -22,27 +22,24 @@ const pageMargin = 50; // Отступ страницы
 const STYLES = {
   fontSize: {
     title: 16,
-    header: 12,
+    subtitle: 14,
     text: 10,
-    small: 8,
-    smallest: 6
+    small: 8
   },
   spacing: {
-    lineGap: 3,
-    characterSpacing: 0.2,
-    columnGap: 5, // Уменьшаем отступ между колонками до 5px
-    summaryLineGap: 15
+    columnGap: 5,
+    characterSpacing: 0
   },
   table: {
-    width: tableWidth,
-    startX: 40, // Немного уменьшаем отступ слева
+    startX: 50,
+    width: 500,
     columns: {
-      код_окэд: 65, // Немного уменьшаем
-      вид_деятельности: 135, // Немного уменьшаем
-      количество_нп: 40, // Немного уменьшаем
-      средняя_численность_работников: 45,
-      'Сумма по полю ФОТ': 85, // Немного увеличиваем для больших чисел
-      Сумма_по_полю_ср_зп: 85 // Немного увеличиваем для больших чисел
+      код_окэд: 65,
+      вид_деятельности: 150,
+      количество_нп: 55,
+      средняя_численность_работников: 55,
+      'Сумма по полю ФОТ': 75,
+      Сумма_по_полю_ср_зп: 75
     }
   }
 };
@@ -114,8 +111,8 @@ const drawTableHeaders = (doc, yPos) => {
   const extraPadding = 5;
   const positions = calculatePositions();
   
-  // Устанавливаем размер шрифта для заголовков
-  doc.fontSize(STYLES.fontSize.text);
+  // Устанавливаем размер шрифта для заголовков и делаем их жирными
+  doc.font('PTSans-Bold').fontSize(STYLES.fontSize.text);
   
   // Рисуем заголовки
   doc.text('Код ОКЭД', positions.код_окэд, currentY, { 
@@ -148,8 +145,11 @@ const drawTableHeaders = (doc, yPos) => {
     align: 'right'
   });
 
+  // Возвращаем к обычному шрифту для данных
+  doc.font('PTSans');
+
   // Добавляем отступ после заголовков
-  currentY += lineHeight + extraPadding;
+  currentY += STYLES.fontSize.text + extraPadding;
   
   // Добавляем линию под заголовками
   doc.moveTo(STYLES.table.startX, currentY)
@@ -166,26 +166,26 @@ const calculatePositions = () => {
   
   // Код ОКЭД
   positions.код_окэд = currentX;
-  currentX += STYLES.table.columns.код_окэд + STYLES.spacing.columnGap;
+  currentX += STYLES.table.columns.код_окэд;
   
   // Вид деятельности
-  positions.вид_деятельности = currentX;
+  positions.вид_деятельности = currentX + STYLES.spacing.columnGap;
   currentX += STYLES.table.columns.вид_деятельности + STYLES.spacing.columnGap;
   
   // Количество
-  positions.количество_нп = currentX;
+  positions.количество_нп = currentX + STYLES.spacing.columnGap;
   currentX += STYLES.table.columns.количество_нп + STYLES.spacing.columnGap;
   
   // Численность
-  positions.численность = currentX;
+  positions.численность = currentX + STYLES.spacing.columnGap;
   currentX += STYLES.table.columns.средняя_численность_работников + STYLES.spacing.columnGap;
   
   // ФОТ
-  positions.фот = currentX;
+  positions.фот = currentX + STYLES.spacing.columnGap;
   currentX += STYLES.table.columns['Сумма по полю ФОТ'] + STYLES.spacing.columnGap;
   
   // Средняя ЗП
-  positions.ср_зп = currentX;
+  positions.ср_зп = currentX + STYLES.spacing.columnGap;
   
   return positions;
 };
@@ -411,7 +411,7 @@ exports.generatePdf = async (req, res) => {
             }
         }
 
-        doc.fontSize(STYLES.fontSize.text);
+        doc.font('PTSans').fontSize(STYLES.fontSize.text);
         
         // Добавляем отступ перед каждой записью
         y += 3;
@@ -499,23 +499,37 @@ exports.generatePdf = async (req, res) => {
       }
 
       // Генерируем диаграммы для всех показателей
-      const chartDataWorkers = prepareChartData(records);
-      
+      const chartDataWorkers = records
+        .map(row => ({
+          name: row.вид_деятельности.length > 30 
+            ? row.вид_деятельности.substring(0, 30) + '...'
+            : row.вид_деятельности,
+          value: Number(row.средняя_численность_работников || 0)
+        }))
+        .sort((a, b) => b.value - a.value)
+        .slice(0, 10);
+
       // Генерируем данные для средней зарплаты
-      const chartDataSalary = records.map(row => ({
-        name: row.вид_деятельности.length > 30 
-          ? row.вид_деятельности.substring(0, 30) + '...'
-          : row.вид_деятельности,
-        value: Number(row.Сумма_по_полю_ср_зп || 0)
-      })).sort((a, b) => b.value - a.value).slice(0, 10);
+      const chartDataSalary = records
+        .map(row => ({
+          name: row.вид_деятельности.length > 30 
+            ? row.вид_деятельности.substring(0, 30) + '...'
+            : row.вид_деятельности,
+          value: Number(row.Сумма_по_полю_ср_зп || 0)
+        }))
+        .sort((a, b) => b.value - a.value)
+        .slice(0, 10);
 
       // Генерируем данные для ФОТ
-      const chartDataFOT = records.map(row => ({
-        name: row.вид_деятельности.length > 30 
-          ? row.вид_деятельности.substring(0, 30) + '...'
-          : row.вид_деятельности,
-        value: Number(row['Сумма по полю ФОТ'] || 0)
-      })).sort((a, b) => b.value - a.value).slice(0, 10);
+      const chartDataFOT = records
+        .map(row => ({
+          name: row.вид_деятельности.length > 30 
+            ? row.вид_деятельности.substring(0, 30) + '...'
+            : row.вид_деятельности,
+          value: Number(row['Сумма по полю ФОТ'] || 0)
+        }))
+        .sort((a, b) => b.value - a.value)
+        .slice(0, 10);
 
       // Генерируем все диаграммы
       const [barChartWorkers, pieChartWorkers, barChartSalary, pieChartSalary, barChartFOT, pieChartFOT] = await Promise.all([
@@ -671,7 +685,7 @@ exports.generatePdf = async (req, res) => {
         const positions = calculatePositions();
 
         // Код ОКЭД
-        doc.text(processText(row.код_окэд), positions.код_окэd, tableY, { 
+        doc.text(processText(row.код_окэд), positions.код_окэд, tableY, { 
           width: STYLES.table.columns.код_окэд,
           align: 'left',
           characterSpacing: STYLES.spacing.characterSpacing
@@ -995,23 +1009,37 @@ exports.generateMultipleDetailPdf = async (req, res) => {
     doc.moveDown();
 
     // Генерируем диаграммы для всех показателей
-    const chartDataWorkers = prepareChartData(records);
-    
+    const chartDataWorkers = records
+      .map(row => ({
+        name: row.вид_деятельности.length > 30 
+          ? row.вид_деятельности.substring(0, 30) + '...'
+          : row.вид_деятельности,
+        value: Number(row.средняя_численность_работников || 0)
+      }))
+      .sort((a, b) => b.value - a.value)
+      .slice(0, 10);
+
     // Генерируем данные для средней зарплаты
-    const chartDataSalary = records.map(row => ({
-      name: row.вид_деятельности.length > 30 
-        ? row.вид_деятельности.substring(0, 30) + '...'
-        : row.вид_деятельности,
-      value: Number(row.Сумма_по_полю_ср_зп || 0)
-    })).sort((a, b) => b.value - a.value).slice(0, 10);
+    const chartDataSalary = records
+      .map(row => ({
+        name: row.вид_деятельности.length > 30 
+          ? row.вид_деятельности.substring(0, 30) + '...'
+          : row.вид_деятельности,
+        value: Number(row.Сумма_по_полю_ср_зп || 0)
+      }))
+      .sort((a, b) => b.value - a.value)
+      .slice(0, 10);
 
     // Генерируем данные для ФОТ
-    const chartDataFOT = records.map(row => ({
-      name: row.вид_деятельности.length > 30 
-        ? row.вид_деятельности.substring(0, 30) + '...'
-        : row.вид_деятельности,
-      value: Number(row['Сумма по полю ФОТ'] || 0)
-    })).sort((a, b) => b.value - a.value).slice(0, 10);
+    const chartDataFOT = records
+      .map(row => ({
+        name: row.вид_деятельности.length > 30 
+          ? row.вид_деятельности.substring(0, 30) + '...'
+          : row.вид_деятельности,
+        value: Number(row['Сумма по полю ФОТ'] || 0)
+      }))
+      .sort((a, b) => b.value - a.value)
+      .slice(0, 10);
 
     // Генерируем все диаграммы
     const [barChartWorkers, pieChartWorkers, barChartSalary, pieChartSalary, barChartFOT, pieChartFOT] = await Promise.all([
@@ -1167,7 +1195,7 @@ exports.generateMultipleDetailPdf = async (req, res) => {
       const positions = calculatePositions();
 
       // Код ОКЭД
-      doc.text(processText(row.код_окэд), positions.код_окэd, tableY, { 
+      doc.text(processText(row.код_окэд), positions.код_окэд, tableY, { 
         width: STYLES.table.columns.код_окэд,
         align: 'left',
         characterSpacing: STYLES.spacing.characterSpacing

@@ -6,19 +6,8 @@ const fs = require('fs');
 const iconv = require('iconv-lite');
 const moment = require('moment');
 const { ChartJSNodeCanvas } = require('chartjs-node-canvas');
-
-// Функция для проверки наличия шрифта
-function getFontPath(fontName) {
-    const fontPath = path.join(__dirname, '../fonts', fontName);
-    console.log('Проверка шрифта:', fontName);
-    console.log('Полный путь к шрифту:', fontPath);
-    if (fs.existsSync(fontPath)) {
-        console.log('Шрифт найден:', fontPath);
-        return fontPath;
-    }
-    console.warn(`Шрифт ${fontName} не найден по пути ${fontPath}`);
-    return null;
-}
+const { getFontPath } = require('../utils/fontHelper');
+const { generateBarChart, generatePieChart } = require('../utils/chartGenerator');
 
 // Функция для конвертации текста в UTF-8
 function ensureUtf8(text) {
@@ -233,50 +222,53 @@ const generatePdf = async (req, res) => {
         }
 
         // Подготовка данных для диаграмм по численности работников (топ-10)
-        const topByEmployees = [...records] // Создаем копию массива для сортировки
+        const topByEmployees = [...records]
             .sort((a, b) => b.средняя_численность_работников - a.средняя_численность_работников)
-            .slice(0, 10);
-
-        const employeesChartData = {
-            labels: topByEmployees.map(r => r.вид_деятельности.length > 40 
-                ? r.вид_деятельности.slice(0, 40) + '...' 
-                : r.вид_деятельности),
-            values: topByEmployees.map(r => r.средняя_численность_работников)
-        };
+            .slice(0, 10)
+            .map(r => ({
+                name: r.вид_деятельности.length > 40 
+                    ? r.вид_деятельности.slice(0, 40) + '...' 
+                    : r.вид_деятельности,
+                value: r.средняя_численность_работников
+            }));
 
         // Подготовка данных для диаграмм по ФОТ (топ-10)
-        const topByFOT = [...records] // Создаем копию массива для сортировки
+        const topByFOT = [...records]
             .sort((a, b) => b['Сумма по полю ФОТ'] - a['Сумма по полю ФОТ'])
-            .slice(0, 10);
-
-        const fotChartData = {
-            labels: topByFOT.map(r => r.вид_деятельности.length > 40 
-                ? r.вид_деятельности.slice(0, 40) + '...' 
-                : r.вид_деятельности),
-            values: topByFOT.map(r => r['Сумма по полю ФОТ'])
-        };
+            .slice(0, 10)
+            .map(r => ({
+                name: r.вид_деятельности.length > 40 
+                    ? r.вид_деятельности.slice(0, 40) + '...' 
+                    : r.вид_деятельности,
+                value: r['Сумма по полю ФОТ']
+            }));
 
         // Подготовка данных для диаграмм по средней ЗП (топ-10)
-        const topByAvgSalary = [...records] // Создаем копию массива для сортировки
+        const topByAvgSalary = [...records]
             .sort((a, b) => b.Сумма_по_полю_ср_зп - a.Сумма_по_полю_ср_зп)
-            .slice(0, 10);
-
-        const avgSalaryChartData = {
-            labels: topByAvgSalary.map(r => r.вид_деятельности.length > 40 
-                ? r.вид_деятельности.slice(0, 40) + '...' 
-                : r.вид_деятельности),
-            values: topByAvgSalary.map(r => r.Сумма_по_полю_ср_зп)
-        };
+            .slice(0, 10)
+            .map(r => ({
+                name: r.вид_деятельности.length > 40 
+                    ? r.вид_деятельности.slice(0, 40) + '...' 
+                    : r.вид_деятельности,
+                value: r.Сумма_по_полю_ср_зп
+            }));
 
         // Создаем диаграммы
-        const employeesBarChartBuffer = await createBarChart(employeesChartData, 800, 400, 'Аналитика по численности работников (топ-10)');
-        const employeesPieChartBuffer = await createPieChart(employeesChartData, 600, 400, 'Распределение численности работников (топ-10)');
-        
-        const fotBarChartBuffer = await createBarChart(fotChartData, 800, 400, 'Аналитика по фонду оплаты труда (топ-10)');
-        const fotPieChartBuffer = await createPieChart(fotChartData, 600, 400, 'Распределение по фонду оплаты труда (топ-10)');
-        
-        const avgSalaryBarChartBuffer = await createBarChart(avgSalaryChartData, 800, 400, 'Аналитика по средней заработной плате (топ-10)');
-        const avgSalaryPieChartBuffer = await createPieChart(avgSalaryChartData, 600, 400, 'Распределение по средней заработной плате (топ-10)');
+        const [employeesBarChartBuffer, employeesPieChartBuffer] = await Promise.all([
+            generateBarChart(topByEmployees, 'Аналитика по численности работников (топ-10)', 'Численность работников'),
+            generatePieChart(topByEmployees, 'Распределение численности работников (топ-10)')
+        ]);
+
+        const [fotBarChartBuffer, fotPieChartBuffer] = await Promise.all([
+            generateBarChart(topByFOT, 'Аналитика по фонду оплаты труда (топ-10)', 'ФОТ'),
+            generatePieChart(topByFOT, 'Распределение по фонду оплаты труда (топ-10)')
+        ]);
+
+        const [avgSalaryBarChartBuffer, avgSalaryPieChartBuffer] = await Promise.all([
+            generateBarChart(topByAvgSalary, 'Аналитика по средней заработной плате (топ-10)', 'Средняя заработная плата'),
+            generatePieChart(topByAvgSalary, 'Распределение по средней заработной плате (топ-10)')
+        ]);
 
         // Создаем PDF документ
         const doc = new PDFDocument({
@@ -314,17 +306,17 @@ const generatePdf = async (req, res) => {
            .fontSize(16)
            .text('Отчет по данным "Сводная"', { align: 'center', underline: true });
 
-        doc.moveDown(1); // Увеличиваем отступ между заголовком и датой
+        doc.moveDown(1);
 
         // Дата создания
         doc.font('DejaVuSans')
            .fontSize(10)
            .text(`Дата создания: ${moment().format('DD.MM.YYYY HH:mm:ss')}`, { align: 'right' });
 
-        doc.moveDown(2); // Увеличиваем отступ перед количеством записей
+        doc.moveDown(2);
         doc.text(`Всего записей: ${records.length}`);
         
-        doc.moveDown(3); // Увеличиваем отступ перед диаграммами
+        doc.moveDown(3);
 
         // Добавляем диаграммы по численности работников
         doc.image(employeesBarChartBuffer, {
@@ -359,8 +351,8 @@ const generatePdf = async (req, res) => {
 
         doc.image(avgSalaryBarChartBuffer, {
             fit: [500, 300],
-                align: 'center'
-           });
+            align: 'center'
+        });
 
         doc.moveDown();
 
@@ -369,7 +361,7 @@ const generatePdf = async (req, res) => {
             align: 'center'
         });
 
-        // Добавляем таблицу с данными (используем оригинальный массив records без сортировки)
+        // Добавляем таблицу с данными
         doc.addPage();
 
         // Создаем таблицу с данными
@@ -496,8 +488,20 @@ const generatePdf = async (req, res) => {
             currentY += maxHeight + 10;
         });
 
-        doc.end();
+        // Добавляем номера страниц
+        const totalPages = doc.bufferedPageRange().count;
+        for (let i = 0; i < totalPages; i++) {
+            doc.switchToPage(i);
+            doc.fontSize(8).text(
+                `Страница ${i + 1} из ${totalPages}`,
+                50,
+                doc.page.height - 50,
+                { align: 'center' }
+            );
+        }
 
+        // Завершаем документ
+        doc.end();
     } catch (error) {
         console.error('Ошибка при генерации PDF:', error);
         res.status(500).send('Ошибка при генерации PDF');
