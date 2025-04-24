@@ -13,12 +13,19 @@ import {
   DialogTitle,
   DialogContent,
   DialogActions,
+  Table,
+  TableBody,
+  TableCell,
+  TableContainer,
+  TableHead,
+  TableRow,
 } from '@mui/material';
 import {
   Search as SearchIcon,
   FilterList as FilterIcon,
   Close as CloseIcon,
-  Logout as LogoutIcon
+  Logout as LogoutIcon,
+  Info as InfoIcon
 } from '@mui/icons-material';
 import api from '../api/axios';
 import DataCharts from './DataCharts';
@@ -38,6 +45,7 @@ interface DataRow {
   сумма_налогов: number;
   удельный_вес: number;
   Сумма_по_полю_ФОТ: number;
+  Наименование?: string;
 }
 
 interface FilterValues {
@@ -62,19 +70,6 @@ const initialFilterValues: FilterValues = {
   средняя_зп_max: ''
 };
 
-const columns: GridColDef[] = [
-  { field: 'код_окэд', headerName: 'Код ОКЭД', width: 130 },
-  { field: 'вид_деятельности', headerName: 'Вид деятельности', width: 300 },
-  { field: 'количество_нп', headerName: 'Количество НП', width: 150, type: 'number' },
-  { field: 'средняя_численность_работников', headerName: 'Средняя численность работников', width: 250, type: 'number' },
-  { field: 'Сумма по полю ФОТ', headerName: 'Сумма ФОТ', width: 150, type: 'number' },
-  { field: 'Сумма_по_полю_ср_зп', headerName: 'Средняя ЗП', width: 150, type: 'number' },
-  { field: 'ИПН', headerName: 'ИПН', width: 130, type: 'string' },
-  { field: 'СН', headerName: 'СН', width: 130, type: 'string' },
-  { field: 'сумма_налогов', headerName: 'Сумма налогов', width: 150, type: 'number' },
-  { field: 'удельный_вес', headerName: 'Удельный вес', width: 150, type: 'number' }
-];
-
 const DataTable: React.FC = () => {
   const [rows, setRows] = useState<DataRow[]>([]);
   const [originalRows, setOriginalRows] = useState<DataRow[]>([]);
@@ -84,7 +79,128 @@ const DataTable: React.FC = () => {
   const [filterValues, setFilterValues] = useState<FilterValues>(initialFilterValues);
   const [showFilters, setShowFilters] = useState(false);
   const [selectedRows, setSelectedRows] = useState<GridRowSelectionModel>([]);
+  const [relatedData, setRelatedData] = useState<any[]>([]);
+  const [showRelatedDialog, setShowRelatedDialog] = useState(false);
+  const [selectedActivity, setSelectedActivity] = useState('');
+  const [hasRelatedData, setHasRelatedData] = useState<{[key: string]: boolean}>({});
   const navigate = useNavigate();
+
+  const handleShowRelatedData = async (activity: string) => {
+    try {
+      const response = await api.get(`/related-data/${encodeURIComponent(activity)}`);
+      const data = response.data;
+      setRelatedData(data);
+      setSelectedActivity(activity);
+      setShowRelatedDialog(true);
+    } catch (err) {
+      console.error('Ошибка при получении связанных данных:', err);
+    }
+  };
+
+  const handleCloseRelatedDialog = () => {
+    setShowRelatedDialog(false);
+    setRelatedData([]);
+  };
+
+  const columns: GridColDef[] = [
+    { 
+      field: 'actions', 
+      headerName: 'Действия', 
+      width: 80,
+      renderHeader: () => (
+        <div style={{ whiteSpace: 'normal', lineHeight: '1.2' }}>
+          Действия
+        </div>
+      ),
+      renderCell: (params) => (
+        <IconButton
+          onClick={() => handleShowRelatedData(params.row.вид_деятельности)}
+          size="small"
+          sx={{
+            color: hasRelatedData[params.row.вид_деятельности] ? 'success.main' : 'action.disabled',
+            '&:hover': {
+              color: hasRelatedData[params.row.вид_деятельности] ? 'success.dark' : 'action.disabled',
+            }
+          }}
+        >
+          <InfoIcon />
+        </IconButton>
+      ),
+    },
+    { 
+      field: 'код_окэд', 
+      headerName: 'Код ОКЭД', 
+      width: 100,
+      renderHeader: () => (
+        <div style={{ whiteSpace: 'normal', lineHeight: '1.2' }}>
+          Код ОКЭД
+        </div>
+      )
+    },
+    { field: 'вид_деятельности', headerName: 'Вид деятельности', width: 300 },
+    { 
+      field: 'количество_нп', 
+      headerName: 'Количество НП', 
+      width: 140,
+      renderHeader: () => (
+        <div style={{ whiteSpace: 'normal', lineHeight: '1.2' }}>
+          Количество НП
+        </div>
+      )
+    },
+    { 
+      field: 'средняя_численность_работников', 
+      headerName: 'Средняя численность работников', 
+      width: 200,
+      renderHeader: () => (
+        <div style={{ whiteSpace: 'normal', lineHeight: '1.2' }}>
+          Средняя численность работников
+        </div>
+      )
+    },
+    { 
+      field: 'Сумма по полю ФОТ', 
+      headerName: 'Сумма ФОТ', 
+      width: 120,
+      renderHeader: () => (
+        <div style={{ whiteSpace: 'normal', lineHeight: '1.2' }}>
+          Сумма ФОТ
+        </div>
+      )
+    },
+    { 
+      field: 'Сумма_по_полю_ср_зп', 
+      headerName: 'Средняя ЗП', 
+      width: 120,
+      renderHeader: () => (
+        <div style={{ whiteSpace: 'normal', lineHeight: '1.2' }}>
+          Средняя ЗП
+        </div>
+      )
+    },
+    { field: 'ИПН', headerName: 'ИПН', width: 100 },
+    { field: 'СН', headerName: 'СН', width: 100 },
+    { 
+      field: 'сумма_налогов', 
+      headerName: 'Сумма налогов', 
+      width: 120,
+      renderHeader: () => (
+        <div style={{ whiteSpace: 'normal', lineHeight: '1.2' }}>
+          Сумма налогов
+        </div>
+      )
+    },
+    { 
+      field: 'удельный_вес', 
+      headerName: 'Удельный вес', 
+      width: 120,
+      renderHeader: () => (
+        <div style={{ whiteSpace: 'normal', lineHeight: '1.2' }}>
+          Удельный вес
+        </div>
+      )
+    }
+  ];
 
   const fetchData = async (filters?: any) => {
     try {
@@ -103,6 +219,27 @@ const DataTable: React.FC = () => {
         ...row,
         Сумма_по_полю_ФОТ: row['Сумма по полю ФОТ']
       }));
+
+      // Загружаем информацию о наличии связанных данных
+      const relatedDataInfo = await Promise.all(
+        dataWithIds.map(async (row: DataRow) => {
+          try {
+            const relatedResponse = await api.get(`/related-data/${encodeURIComponent(row.вид_деятельности)}`);
+            return { activity: row.вид_деятельности, hasData: relatedResponse.data && relatedResponse.data.length > 0 };
+          } catch (err) {
+            console.error(`Ошибка при проверке связанных данных для ${row.вид_деятельности}:`, err);
+            return { activity: row.вид_деятельности, hasData: false };
+          }
+        })
+      );
+
+      // Обновляем состояние наличия данных
+      const newHasRelatedData = relatedDataInfo.reduce((acc, { activity, hasData }) => {
+        acc[activity] = hasData;
+        return acc;
+      }, {} as { [key: string]: boolean });
+
+      setHasRelatedData(newHasRelatedData);
       setRows(dataWithIds);
       setOriginalRows(dataWithIds);
       setError(null);
@@ -120,8 +257,8 @@ const DataTable: React.FC = () => {
 
   const handleSearch = () => {
     if (searchTerm) {
+      const searchTermLower = searchTerm.toLowerCase().trim();
       const filteredRows = originalRows.filter(row => {
-        const searchTermLower = searchTerm.toLowerCase();
         return (
           row.код_окэд.toLowerCase().includes(searchTermLower) ||
           row.вид_деятельности.toLowerCase().includes(searchTermLower)
@@ -195,6 +332,11 @@ const DataTable: React.FC = () => {
     navigate('/login');
   };
 
+  const handleClearSearch = () => {
+    setSearchTerm('');
+    setRows(originalRows);
+  };
+
   if (loading) {
     return (
       <Box display="flex" justifyContent="center" alignItems="center" minHeight="400px">
@@ -229,6 +371,11 @@ const DataTable: React.FC = () => {
               <IconButton onClick={handleSearch}>
                 <SearchIcon />
               </IconButton>
+              {searchTerm && (
+                <IconButton onClick={handleClearSearch} color="error">
+                  <CloseIcon />
+                </IconButton>
+              )}
             </Box>
           </Grid>
           <Grid item xs={12} md={6}>
@@ -377,6 +524,61 @@ const DataTable: React.FC = () => {
           <Button onClick={handleFilter} variant="contained">
             Применить
           </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Диалог со связанными данными */}
+      <Dialog
+        open={showRelatedDialog}
+        onClose={handleCloseRelatedDialog}
+        maxWidth="lg"
+        fullWidth
+      >
+        <DialogTitle>
+          Связанные данные для: {selectedActivity}
+          <IconButton
+            onClick={handleCloseRelatedDialog}
+            sx={{ position: 'absolute', right: 8, top: 8 }}
+          >
+            <CloseIcon />
+          </IconButton>
+        </DialogTitle>
+        <DialogContent>
+          <TableContainer component={Paper}>
+            <Table>
+              <TableHead>
+                <TableRow>
+                  <TableCell>Код ОКЭД</TableCell>
+                  <TableCell>ОКЭД</TableCell>
+                  <TableCell>ИИН/БИН</TableCell>
+                  <TableCell>Код НУ</TableCell>
+                  <TableCell>Кол-во чел</TableCell>
+                  <TableCell>Ср.числ</TableCell>
+                  <TableCell>ФОТ</TableCell>
+                  <TableCell>Ср.зп</TableCell>
+                  <TableCell>Наименование</TableCell>
+                </TableRow>
+              </TableHead>
+              <TableBody>
+                {relatedData.map((row, index) => (
+                  <TableRow key={index}>
+                    <TableCell>{row['Код ОКЭД']}</TableCell>
+                    <TableCell>{row['ОКЭД']}</TableCell>
+                    <TableCell>{row['ИИН/БИН']}</TableCell>
+                    <TableCell>{row['Код НУ']}</TableCell>
+                    <TableCell>{row['Кол-во_чел']}</TableCell>
+                    <TableCell>{row['Ср.числ']}</TableCell>
+                    <TableCell>{row['ФОТ']}</TableCell>
+                    <TableCell>{row['Ср.зп']}</TableCell>
+                    <TableCell>{row['Наименование']}</TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </TableContainer>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={handleCloseRelatedDialog}>Закрыть</Button>
         </DialogActions>
       </Dialog>
     </Box>

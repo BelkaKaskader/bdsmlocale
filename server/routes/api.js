@@ -159,6 +159,21 @@ router.get('/data', async (req, res) => {
   }
 });
 
+// Получение связанных данных по виду деятельности
+router.get('/related-data/:activity', async (req, res) => {
+  try {
+    const { activity } = req.params;
+    const result = await pool.query(
+      'SELECT * FROM "otchety_full" WHERE "ОКЭД" = $1 ORDER BY "Код ОКЭД"',
+      [activity]
+    );
+    res.json(result.rows);
+  } catch (err) {
+    console.error('Ошибка при получении связанных данных:', err);
+    res.status(500).json({ message: 'Ошибка сервера при получении связанных данных' });
+  }
+});
+
 // PDF routes
 router.get('/pdf/generate', pdfController.generatePdf);
 router.get('/pdf/generate/:id', pdfController.generateDetailPdf);

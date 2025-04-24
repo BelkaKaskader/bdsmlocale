@@ -9,7 +9,20 @@ import {
   InputLabel,
   Select,
   MenuItem,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
+  Button,
+  Table,
+  TableBody,
+  TableCell,
+  TableContainer,
+  TableHead,
+  TableRow,
+  IconButton,
 } from '@mui/material';
+import { Close as CloseIcon } from '@mui/icons-material';
 import {
   BarChart,
   Bar,
@@ -25,6 +38,7 @@ import {
   ResponsiveContainer,
   Cell,
 } from 'recharts';
+import api from '../api/axios';
 
 interface DataRow {
   код_окэд: string;
@@ -99,6 +113,10 @@ const formatPercent = (value: number): string => {
 const DataCharts: React.FC<DataChartsProps> = ({ data }) => {
   const [selectedChart, setSelectedChart] = useState('workforce');
   const [chartType, setChartType] = useState<'bar' | 'pie'>('bar');
+  const [showRelatedDialog, setShowRelatedDialog] = useState(false);
+  const [selectedActivity, setSelectedActivity] = useState('');
+  const [relatedData, setRelatedData] = useState<any[]>([]);
+  const [topCount, setTopCount] = useState<number>(10);
 
   const prepareChartData = () => {
     const totalFund = data.reduce((sum, row) => sum + Number(row['Сумма по полю ФОТ'] || 0), 0);
@@ -112,7 +130,7 @@ const DataCharts: React.FC<DataChartsProps> = ({ data }) => {
       }
     });
 
-    return sortedData.slice(0, 10).map(row => ({
+    return sortedData.slice(0, topCount).map(row => ({
       name: row.вид_деятельности.length > 30 
         ? row.вид_деятельности.substring(0, 30) + '...'
         : row.вид_деятельности,
@@ -136,13 +154,48 @@ const DataCharts: React.FC<DataChartsProps> = ({ data }) => {
     return 600;
   };
 
+  const handleChartClick = async (data: any) => {
+    if (data && data.activePayload && data.activePayload[0]) {
+      const activity = data.activePayload[0].payload.fullName;
+      try {
+        const response = await api.get(`/related-data/${encodeURIComponent(activity)}`);
+        setRelatedData(response.data);
+        setSelectedActivity(activity);
+        setShowRelatedDialog(true);
+      } catch (err) {
+        console.error('Ошибка при получении связанных данных:', err);
+      }
+    }
+  };
+
+  const handlePieClick = async (data: any, index: number) => {
+    if (data && data.name) {
+      try {
+        const response = await api.get(`/related-data/${encodeURIComponent(data.fullName)}`);
+        setRelatedData(response.data);
+        setSelectedActivity(data.fullName);
+        setShowRelatedDialog(true);
+      } catch (err) {
+        console.error('Ошибка при получении связанных данных:', err);
+      }
+    }
+  };
+
+  const handleCloseDialog = () => {
+    setShowRelatedDialog(false);
+    setRelatedData([]);
+  };
+
   const renderWorkforceChart = () => {
     const chartData = prepareChartData();
-    console.log('Chart Data:', chartData);
     
     return chartType === 'bar' ? (
       <ResponsiveContainer width="100%" height={600}>
-        <BarChart data={chartData} margin={{ top: 20, right: 30, left: 250, bottom: 150 }}>
+        <BarChart 
+          data={chartData} 
+          margin={{ top: 20, right: 30, left: 250, bottom: 150 }}
+          onClick={handleChartClick}
+        >
           <CartesianGrid strokeDasharray="3 3" />
           <XAxis
             dataKey="name"
@@ -183,7 +236,7 @@ const DataCharts: React.FC<DataChartsProps> = ({ data }) => {
       </ResponsiveContainer>
     ) : (
       <div style={{ width: '100%', height: '600px' }}>
-        <h3 style={{ textAlign: 'center' }}>Распределение численности работников (топ-10)</h3>
+        <h3 style={{ textAlign: 'center' }}>Распределение численности работников (топ-{topCount})</h3>
         <ResponsiveContainer width="100%" height={400}>
           <PieChart>
             <Pie
@@ -198,6 +251,7 @@ const DataCharts: React.FC<DataChartsProps> = ({ data }) => {
               dataKey="value"
               nameKey="name"
               label={({ name, percent }) => `${(percent * 100).toFixed(0)}%`}
+              onClick={handlePieClick}
             >
               {chartData.map((entry, index) => (
                 <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
@@ -221,11 +275,14 @@ const DataCharts: React.FC<DataChartsProps> = ({ data }) => {
 
   const renderSalaryChart = () => {
     const chartData = prepareChartData();
-    console.log('Salary Chart Data:', chartData);
     
     return chartType === 'bar' ? (
       <ResponsiveContainer width="100%" height={600}>
-        <BarChart data={chartData} margin={{ top: 20, right: 30, left: 250, bottom: 150 }}>
+        <BarChart 
+          data={chartData} 
+          margin={{ top: 20, right: 30, left: 250, bottom: 150 }}
+          onClick={handleChartClick}
+        >
           <CartesianGrid strokeDasharray="3 3" />
           <XAxis
             dataKey="name"
@@ -266,7 +323,7 @@ const DataCharts: React.FC<DataChartsProps> = ({ data }) => {
       </ResponsiveContainer>
     ) : (
       <div style={{ width: '100%', height: '600px' }}>
-        <h3 style={{ textAlign: 'center' }}>Распределение средней зарплаты (топ-10)</h3>
+        <h3 style={{ textAlign: 'center' }}>Распределение средней зарплаты (топ-{topCount})</h3>
         <ResponsiveContainer width="100%" height={400}>
           <PieChart>
             <Pie
@@ -281,6 +338,7 @@ const DataCharts: React.FC<DataChartsProps> = ({ data }) => {
               dataKey="value"
               nameKey="name"
               label={({ name, percent }) => `${(percent * 100).toFixed(0)}%`}
+              onClick={handlePieClick}
             >
               {chartData.map((entry, index) => (
                 <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
@@ -304,11 +362,14 @@ const DataCharts: React.FC<DataChartsProps> = ({ data }) => {
 
   const renderFundChart = () => {
     const chartData = prepareChartData();
-    console.log('Fund Chart Data:', chartData);
     
     return chartType === 'bar' ? (
       <ResponsiveContainer width="100%" height={600}>
-        <BarChart data={chartData} margin={{ top: 20, right: 30, left: 250, bottom: 150 }}>
+        <BarChart 
+          data={chartData} 
+          margin={{ top: 20, right: 30, left: 250, bottom: 150 }}
+          onClick={handleChartClick}
+        >
           <CartesianGrid strokeDasharray="3 3" />
           <XAxis
             dataKey="name"
@@ -349,7 +410,7 @@ const DataCharts: React.FC<DataChartsProps> = ({ data }) => {
       </ResponsiveContainer>
     ) : (
       <div style={{ width: '100%', height: '600px' }}>
-        <h3 style={{ textAlign: 'center' }}>Распределение фонда оплаты труда (топ-10)</h3>
+        <h3 style={{ textAlign: 'center' }}>Распределение фонда оплаты труда (топ-{topCount})</h3>
         <ResponsiveContainer width="100%" height={400}>
           <PieChart>
             <Pie
@@ -364,6 +425,7 @@ const DataCharts: React.FC<DataChartsProps> = ({ data }) => {
               dataKey="value"
               nameKey="name"
               label={({ name, percent }) => `${(percent * 100).toFixed(0)}%`}
+              onClick={handlePieClick}
             >
               {chartData.map((entry, index) => (
                 <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
@@ -386,41 +448,109 @@ const DataCharts: React.FC<DataChartsProps> = ({ data }) => {
   };
 
   return (
-    <Paper sx={{ p: 3 }}>
-      <Box sx={{ mb: 3 }}>
-        <Typography variant="h6" gutterBottom>
-          Аналитика по видам деятельности (топ-10)
-        </Typography>
-        <Box sx={{ display: 'flex', gap: 2, mb: 2 }}>
-          <FormControl>
-            <InputLabel>Тип данных</InputLabel>
-            <Select
-              value={selectedChart}
-              onChange={(e) => setSelectedChart(e.target.value)}
-              label="Тип данных"
-            >
-              <MenuItem value="workforce">Численность работников</MenuItem>
-              <MenuItem value="salary">Среднемесячная зарплата</MenuItem>
-              <MenuItem value="fund">Фонд оплаты труда</MenuItem>
-            </Select>
-          </FormControl>
-          <FormControl>
-            <InputLabel>Тип диаграммы</InputLabel>
-            <Select
-              value={chartType}
-              onChange={(e) => setChartType(e.target.value as 'bar' | 'pie')}
-              label="Тип диаграммы"
-            >
-              <MenuItem value="bar">Столбчатая</MenuItem>
-              <MenuItem value="pie">Круговая</MenuItem>
-            </Select>
-          </FormControl>
+    <>
+      <Paper sx={{ p: 3 }}>
+        <Box sx={{ mb: 3 }}>
+          <Typography variant="h6" gutterBottom>
+            Аналитика по видам деятельности (топ-{topCount})
+          </Typography>
+          <Box sx={{ display: 'flex', gap: 2, mb: 2 }}>
+            <FormControl>
+              <InputLabel>Тип данных</InputLabel>
+              <Select
+                value={selectedChart}
+                onChange={(e) => setSelectedChart(e.target.value)}
+                label="Тип данных"
+              >
+                <MenuItem value="workforce">Численность работников</MenuItem>
+                <MenuItem value="salary">Среднемесячная зарплата</MenuItem>
+                <MenuItem value="fund">Фонд оплаты труда</MenuItem>
+              </Select>
+            </FormControl>
+            <FormControl>
+              <InputLabel>Тип диаграммы</InputLabel>
+              <Select
+                value={chartType}
+                onChange={(e) => setChartType(e.target.value as 'bar' | 'pie')}
+                label="Тип диаграммы"
+              >
+                <MenuItem value="bar">Столбчатая</MenuItem>
+                <MenuItem value="pie">Круговая</MenuItem>
+              </Select>
+            </FormControl>
+            <FormControl>
+              <InputLabel>Количество записей</InputLabel>
+              <Select
+                value={topCount}
+                onChange={(e) => setTopCount(Number(e.target.value))}
+                label="Количество записей"
+              >
+                <MenuItem value={10}>Топ 10</MenuItem>
+                <MenuItem value={15}>Топ 15</MenuItem>
+                <MenuItem value={25}>Топ 25</MenuItem>
+              </Select>
+            </FormControl>
+          </Box>
         </Box>
-      </Box>
-      {selectedChart === 'workforce' && renderWorkforceChart()}
-      {selectedChart === 'salary' && renderSalaryChart()}
-      {selectedChart === 'fund' && renderFundChart()}
-    </Paper>
+        {selectedChart === 'workforce' && renderWorkforceChart()}
+        {selectedChart === 'salary' && renderSalaryChart()}
+        {selectedChart === 'fund' && renderFundChart()}
+      </Paper>
+
+      <Dialog
+        open={showRelatedDialog}
+        onClose={handleCloseDialog}
+        maxWidth="lg"
+        fullWidth
+      >
+        <DialogTitle>
+          Связанные данные для: {selectedActivity}
+          <IconButton
+            onClick={handleCloseDialog}
+            sx={{ position: 'absolute', right: 8, top: 8 }}
+          >
+            <CloseIcon />
+          </IconButton>
+        </DialogTitle>
+        <DialogContent>
+          <TableContainer component={Paper}>
+            <Table>
+              <TableHead>
+                <TableRow>
+                  <TableCell>Код ОКЭД</TableCell>
+                  <TableCell>ОКЭД</TableCell>
+                  <TableCell>ИИН/БИН</TableCell>
+                  <TableCell>Код НУ</TableCell>
+                  <TableCell>Кол-во чел</TableCell>
+                  <TableCell>Ср.числ</TableCell>
+                  <TableCell>ФОТ</TableCell>
+                  <TableCell>Ср.зп</TableCell>
+                  <TableCell>Наименование</TableCell>
+                </TableRow>
+              </TableHead>
+              <TableBody>
+                {relatedData.map((row, index) => (
+                  <TableRow key={index}>
+                    <TableCell>{row['Код ОКЭД']}</TableCell>
+                    <TableCell>{row['ОКЭД']}</TableCell>
+                    <TableCell>{row['ИИН/БИН']}</TableCell>
+                    <TableCell>{row['Код НУ']}</TableCell>
+                    <TableCell>{row['Кол-во_чел']}</TableCell>
+                    <TableCell>{row['Ср.числ']}</TableCell>
+                    <TableCell>{row['ФОТ']}</TableCell>
+                    <TableCell>{row['Ср.зп']}</TableCell>
+                    <TableCell>{row['Наименование']}</TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </TableContainer>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={handleCloseDialog}>Закрыть</Button>
+        </DialogActions>
+      </Dialog>
+    </>
   );
 };
 
