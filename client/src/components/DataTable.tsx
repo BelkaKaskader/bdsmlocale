@@ -47,6 +47,8 @@ interface FilterValues {
   средняя_численность_max: string;
   сумма_налогов_min: string;
   сумма_налогов_max: string;
+  средняя_зп_min: string;
+  средняя_зп_max: string;
 }
 
 const initialFilterValues: FilterValues = {
@@ -55,7 +57,9 @@ const initialFilterValues: FilterValues = {
   средняя_численность_min: '',
   средняя_численность_max: '',
   сумма_налогов_min: '',
-  сумма_налогов_max: ''
+  сумма_налогов_max: '',
+  средняя_зп_min: '',
+  средняя_зп_max: ''
 };
 
 const columns: GridColDef[] = [
@@ -159,6 +163,16 @@ const DataTable: React.FC = () => {
         
         // Проверка максимальной суммы налогов
         if (filterValues.сумма_налогов_max && Number(row.сумма_налогов) > Number(filterValues.сумма_налогов_max)) {
+          return false;
+        }
+
+        // Проверка минимальной средней зарплаты
+        if (filterValues.средняя_зп_min && Number(row.Сумма_по_полю_ср_зп) < Number(filterValues.средняя_зп_min)) {
+          return false;
+        }
+
+        // Проверка максимальной средней зарплаты
+        if (filterValues.средняя_зп_max && Number(row.Сумма_по_полю_ср_зп) > Number(filterValues.средняя_зп_max)) {
           return false;
         }
         
@@ -330,6 +344,24 @@ const DataTable: React.FC = () => {
                 type="number"
                 value={filterValues.сумма_налогов_max}
                 onChange={(e) => setFilterValues({ ...filterValues, сумма_налогов_max: e.target.value })}
+              />
+            </Grid>
+            <Grid item xs={6}>
+              <TextField
+                fullWidth
+                label="Мин. средняя ЗП"
+                type="number"
+                value={filterValues.средняя_зп_min}
+                onChange={(e) => setFilterValues({ ...filterValues, средняя_зп_min: e.target.value })}
+              />
+            </Grid>
+            <Grid item xs={6}>
+              <TextField
+                fullWidth
+                label="Макс. средняя ЗП"
+                type="number"
+                value={filterValues.средняя_зп_max}
+                onChange={(e) => setFilterValues({ ...filterValues, средняя_зп_max: e.target.value })}
               />
             </Grid>
           </Grid>
