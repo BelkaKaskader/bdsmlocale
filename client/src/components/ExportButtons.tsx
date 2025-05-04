@@ -1,15 +1,21 @@
-import React from 'react';
+import React, { useRef } from 'react';
 import { Button, Stack, Typography, Tooltip } from '@mui/material';
 import PictureAsPdfIcon from '@mui/icons-material/PictureAsPdf';
 import FileDownloadIcon from '@mui/icons-material/FileDownload';
+import UploadFileIcon from '@mui/icons-material/UploadFile';
 import api from '../api/axios';
+import { useAuth } from '../contexts/AuthContext';
 
 interface ExportButtonsProps {
   selectedIds?: string[];
   filter?: string;
+  onDataImported?: () => void;
 }
 
-const ExportButtons: React.FC<ExportButtonsProps> = ({ selectedIds, filter }) => {
+const ExportButtons: React.FC<ExportButtonsProps> = ({ selectedIds, filter, onDataImported }) => {
+  const { isAdmin } = useAuth();
+  const inputSvodnayaRef = useRef<HTMLInputElement>(null);
+  const inputOtchetyFullRef = useRef<HTMLInputElement>(null);
   // Получаем токен из локального хранилища
   const token = localStorage.getItem('token');
 
@@ -199,39 +205,144 @@ const ExportButtons: React.FC<ExportButtonsProps> = ({ selectedIds, filter }) =>
     }
   };
 
+  // Обработчик для загрузки файла в svodnaya
+  const handleImportSvodnaya = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    const formData = new FormData();
+    formData.append('file', file);
+    try {
+      await api.post('/import/svodnaya', formData, {
+        headers: { 'Content-Type': 'multipart/form-data', Authorization: `Bearer ${localStorage.getItem('token')}` },
+      });
+      alert('Файл успешно импортирован в "Сводная"!');
+      if (onDataImported) onDataImported();
+    } catch (error: any) {
+      alert('Ошибка при импорте файла в "Сводная"!');
+    }
+    if (inputSvodnayaRef.current) inputSvodnayaRef.current.value = '';
+  };
+
+  // Обработчик для загрузки файла в otchety_full
+  const handleImportOtchetyFull = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    const formData = new FormData();
+    formData.append('file', file);
+    try {
+      await api.post('/import/otchety_full', formData, {
+        headers: { 'Content-Type': 'multipart/form-data', Authorization: `Bearer ${localStorage.getItem('token')}` },
+      });
+      alert('Файл успешно импортирован в "otchety_full"!');
+      if (onDataImported) onDataImported();
+    } catch (error: any) {
+      alert('Ошибка при импорте файла в "otchety_full"!');
+    }
+    if (inputOtchetyFullRef.current) inputOtchetyFullRef.current.value = '';
+  };
+
   return (
-    <Stack direction="row" spacing={2} alignItems="center" sx={{ mb: 2 }}>
-      <Typography variant="subtitle1">Экспорт данных:</Typography>
-      
-      <Tooltip title="Экспортировать все данные в PDF">
-        <Button 
-          variant="outlined" 
-          startIcon={<PictureAsPdfIcon />}
-          onClick={handleExportAllToPdf}
-        >
-          Все данные в PDF
-        </Button>
-      </Tooltip>
-      
-      <Tooltip title={selectedIds && selectedIds.length > 1 
-        ? "Экспортировать выбранные записи в PDF" 
-        : "Экспортировать выбранную запись в PDF"
-      }>
-        <span>
+    <>
+      {isAdmin && (
+        <Stack direction="row" spacing={2} alignItems="center" sx={{ mb: 2 }}>
+          <Typography variant="subtitle1" sx={{ mr: 1 }}>Импорт данных:</Typography>
+          <Tooltip title="Импортировать данные в 'Сводная'">
+            <span>
+              <Button
+                variant="contained"
+                sx={{
+                  background: 'linear-gradient(90deg, #8e24aa, #d81b60)',
+                  color: '#fff',
+                  '&:hover': {
+                    background: 'linear-gradient(90deg, #6a1b9a, #ad1457)'
+                  }
+                }}
+                startIcon={<UploadFileIcon />}
+                onClick={() => inputSvodnayaRef.current?.click()}
+              >
+                СВОДНАЯ ФОТ 0306
+              </Button>
+              <input
+                type="file"
+                accept=".xlsx,.xls"
+                ref={inputSvodnayaRef}
+                style={{ display: 'none' }}
+                onChange={handleImportSvodnaya}
+              />
+            </span>
+          </Tooltip>
+          <Tooltip title="Импортировать данные в 'otchety_full'">
+            <span>
+              <Button
+                variant="contained"
+                sx={{
+                  background: 'linear-gradient(90deg, #8e24aa, #d81b60)',
+                  color: '#fff',
+                  '&:hover': {
+                    background: 'linear-gradient(90deg, #6a1b9a, #ad1457)'
+                  }
+                }}
+                startIcon={<UploadFileIcon />}
+                onClick={() => inputOtchetyFullRef.current?.click()}
+              >
+                ФОТ ИТОГ
+              </Button>
+              <input
+                type="file"
+                accept=".xlsx,.xls"
+                ref={inputOtchetyFullRef}
+                style={{ display: 'none' }}
+                onChange={handleImportOtchetyFull}
+              />
+            </span>
+          </Tooltip>
+        </Stack>
+      )}
+      <Stack direction="row" spacing={2} alignItems="center" sx={{ mb: 2 }}>
+        <Typography variant="subtitle1">Экспорт данных:</Typography>
+        <Tooltip title="Экспортировать все данные в PDF">
           <Button 
-            variant="outlined" 
-            startIcon={<FileDownloadIcon />}
-            onClick={handleExportSelectedToPdf}
-            disabled={!selectedIds || selectedIds.length === 0}
+            variant="contained"
+            sx={{
+              background: 'linear-gradient(90deg, #1976d2, #2196f3)',
+              color: '#fff',
+              '&:hover': {
+                background: 'linear-gradient(90deg, #1565c0, #1976d2)'
+              }
+            }}
+            startIcon={<PictureAsPdfIcon />}
+            onClick={handleExportAllToPdf}
           >
-            {selectedIds && selectedIds.length > 1 
-              ? "Выбранные записи в PDF" 
-              : "Выбранную запись в PDF"
-            }
+            Все данные в PDF
           </Button>
-        </span>
-      </Tooltip>
-    </Stack>
+        </Tooltip>
+        <Tooltip title={selectedIds && selectedIds.length > 1 
+          ? "Экспортировать выбранные записи в PDF" 
+          : "Экспортировать выбранную запись в PDF"
+        }>
+          <span>
+            <Button 
+              variant="contained"
+              sx={{
+                background: 'linear-gradient(90deg, #1976d2, #2196f3)',
+                color: '#fff',
+                '&:hover': {
+                  background: 'linear-gradient(90deg, #1565c0, #1976d2)'
+                }
+              }}
+              startIcon={<FileDownloadIcon />}
+              onClick={handleExportSelectedToPdf}
+              disabled={!selectedIds || selectedIds.length === 0}
+            >
+              {selectedIds && selectedIds.length > 1 
+                ? "Выбранные записи в PDF" 
+                : "Выбранную запись в PDF"
+              }
+            </Button>
+          </span>
+        </Tooltip>
+      </Stack>
+    </>
   );
 };
 

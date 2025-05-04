@@ -396,6 +396,7 @@ const DataTable: React.FC = () => {
       <ExportButtons 
         selectedIds={selectedRows.map((id) => id.toString())} 
         filter={searchTerm} 
+        onDataImported={() => fetchData()}
       />
 
       {/* Диаграммы */}

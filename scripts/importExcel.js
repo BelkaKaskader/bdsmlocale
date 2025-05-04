@@ -67,35 +67,66 @@ async function importFromExcel(excelFilePath) {
         
         const worksheet = workbook.Sheets[sheetName];
         
-        // Получаем диапазон данных
-        const range = XLSX.utils.decode_range(worksheet['!ref']);
-        console.log(`Диапазон данных: от A1 до ${XLSX.utils.encode_cell(range.e)}`);
-        
-        // Получаем заголовки из первой строки
-        const headers = [];
-        for (let C = range.s.c; C <= range.e.c; ++C) {
-            const cell = worksheet[XLSX.utils.encode_cell({r: 0, c: C})];
-            if (cell && cell.v) {
-                headers.push(cell.v);
+        // Явно задаём названия столбцов
+        const headers = [
+            'Код ОКЭД',
+            'Вид деятельности',
+            'Количество НП',
+            'средняя численность работников',
+            'Сумма по полю ФОТ',
+            'Сумма по полю ср.зп',
+            'ИПН',
+            'СН',
+            'Сумма налогов',
+            'Удельный вес %'
+        ];
+        // Автоматическое определение первой строки с данными
+        let dataStartRow = 3; // по умолчанию пропускаем 3 строки
+        const rangeRef = worksheet['!ref'];
+        if (rangeRef) {
+            const range = XLSX.utils.decode_range(rangeRef);
+            for (let r = 3; r <= range.e.r; r++) {
+                const cell = worksheet[XLSX.utils.encode_cell({ r, c: 0 })];
+                if (cell && cell.v && !isNaN(Number(cell.v))) {
+                    dataStartRow = r;
+                    break;
+                }
             }
         }
-        console.log('\nЗаголовки в Excel файле:');
-        headers.forEach((header, index) => {
-            console.log(`${index + 1}. ${header}`);
-        });
-        
-        // Читаем все данные из Excel
+        // Читаем только данные, начиная с первой строки с данными
         const rawData = XLSX.utils.sheet_to_json(worksheet, {
             header: headers,
-            range: 1 // Начинаем со второй строки
+            range: dataStartRow
         });
-        
-        console.log(`\nНайдено ${rawData.length} записей в Excel файле`);
+        // Фильтрация и обработка пустых значений
+        const cleanData = rawData.filter(row => {
+            // Пропускать строки, где 'Код ОКЭД' пустой, null, undefined, только пробелы или равен 'Код ОКЭД'
+            if (!row['Код ОКЭД'] || String(row['Код ОКЭД']).trim() === '' || String(row['Код ОКЭД']).trim() === 'Код ОКЭД') return false;
+            // Пропускать строки, где все значения пустые
+            const values = Object.values(row).map(v => (typeof v === 'string' ? v.trim() : v));
+            if (values.every(v => v === '' || v === null || v === undefined)) return false;
+            return true;
+        }).map(row => {
+            // trim для всех строковых значений
+            Object.keys(row).forEach(key => {
+                if (typeof row[key] === 'string') row[key] = row[key].trim();
+            });
+            // Для числовых полей, если значение не число — использовать 0
+            ['Количество НП', 'средняя численность работников', 'Сумма по полю ФОТ', 'Сумма по полю ср.зп', 'ИПН', 'СН', 'Сумма налогов', 'Удельный вес %'].forEach(key => {
+                if (row[key] === undefined || row[key] === null || row[key] === '' || isNaN(Number(row[key]))) {
+                    row[key] = 0;
+                } else {
+                    row[key] = Number(row[key]);
+                }
+            });
+            return row;
+        });
+        console.log(`\nНайдено ${cleanData.length} очищенных записей для импорта`);
         
         // Выводим первую запись для проверки
-        if (rawData.length > 0) {
+        if (cleanData.length > 0) {
             console.log('\nПример первой записи:');
-            console.log(JSON.stringify(rawData[0], null, 2));
+            console.log(JSON.stringify(cleanData[0], null, 2));
         }
         
         // Подключаемся к базе данных
@@ -107,14 +138,7 @@ async function importFromExcel(excelFilePath) {
             let importedCount = 0;
             let skippedCount = 0;
             
-            for (const row of rawData) {
-                // Пропускаем пустые строки и строки с "Общий итог"
-                if (!row['Код ОКЭД'] || row['Код ОКЭД'] === 'Общий итог') {
-                    console.log(`Пропускаем строку: ${row['Код ОКЭД'] || 'пустая строка'}`);
-                    skippedCount++;
-                    continue;
-                }
-                
+            for (const row of cleanData) {
                 // Проверяем наличие обязательных полей
                 if (!row['Вид деятельности']) {
                     console.log(`Пропускаем строку с пустым видом деятельности: ${row['Код ОКЭД']}`);
@@ -134,16 +158,14 @@ async function importFromExcel(excelFilePath) {
                     console.log('Добавление новой записи...');
                     
                     // Обработка числовых полей
-                    const количествоНП = row['Количество НП'] ? parseInt(row['Количество НП']) : 0;
-                    const суммаНалогов = row['Сумма налогов'] ? parseFloat(row['Сумма налогов']) : 0;
-                    const средняяЧисленность = row['средняя численность работников'] 
-                        ? parseFloat(row['средняя численность работников']).toFixed(2) 
-                        : '0.00';
-                    const удельныйВес = row['Удельный вес %'] ? parseFloat(row['Удельный вес %']) : 0;
-                    const суммаФОТ = row['Сумма по полю ФОТ'] ? parseFloat(row['Сумма по полю ФОТ']) : 0;
-                    const суммаСрЗп = row['Сумма по полю ср.зп'] ? parseFloat(row['Сумма по полю ср.зп']) : 0;
-                    const ипн = row['ИПН'] ? parseFloat(row['ИПН']) : 0;
-                    const сн = row['СН'] ? parseFloat(row['СН']) : 0;
+                    const количествоНП = row['Количество НП'];
+                    const суммаНалогов = row['Сумма налогов'];
+                    const средняяЧисленность = row['средняя численность работников'].toFixed(2);
+                    const удельныйВес = row['Удельный вес %'];
+                    const суммаФОТ = row['Сумма по полю ФОТ'];
+                    const суммаСрЗп = row['Сумма по полю ср.зп'];
+                    const ипн = row['ИПН'];
+                    const сн = row['СН'];
                     
                     // Подготавливаем значения для вставки
                     const values = [
@@ -205,7 +227,7 @@ async function importFromExcel(excelFilePath) {
             
             await client.query('COMMIT');
             console.log('\n=== Импорт данных завершен ===');
-            console.log(`Всего записей в Excel: ${rawData.length}`);
+            console.log(`Всего записей в Excel: ${cleanData.length}`);
             console.log(`Успешно импортировано: ${importedCount}`);
             console.log(`Пропущено: ${skippedCount}`);
             
