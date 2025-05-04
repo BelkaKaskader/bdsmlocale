@@ -71,9 +71,117 @@ const Сводная = sequelize.define('Сводная', {
     timestamps: true
 });
 
+const OtchetyFull = sequelize.define('OtchetyFull', {
+    id: {
+        type: DataTypes.UUID,
+        defaultValue: DataTypes.UUIDV4,
+        primaryKey: true
+    },
+    'Код ОКЭД': {
+        type: DataTypes.STRING,
+        allowNull: true
+    },
+    'ОКЭД': {
+        type: DataTypes.STRING,
+        allowNull: true
+    },
+    'ИИН/БИН': {
+        type: DataTypes.STRING,
+        allowNull: true
+    },
+    'Код НУ': {
+        type: DataTypes.STRING,
+        allowNull: true
+    },
+    'empl_1_q1': {
+        type: DataTypes.INTEGER,
+        allowNull: true
+    },
+    'empl_2_q1': {
+        type: DataTypes.INTEGER,
+        allowNull: true
+    },
+    'empl_3_q1': {
+        type: DataTypes.INTEGER,
+        allowNull: true
+    },
+    'empl_1_q2': {
+        type: DataTypes.INTEGER,
+        allowNull: true
+    },
+    'empl_2_q2': {
+        type: DataTypes.INTEGER,
+        allowNull: true
+    },
+    'empl_3_q2': {
+        type: DataTypes.INTEGER,
+        allowNull: true
+    },
+    'empl_1_q3': {
+        type: DataTypes.INTEGER,
+        allowNull: true
+    },
+    'empl_2_q3': {
+        type: DataTypes.INTEGER,
+        allowNull: true
+    },
+    'empl_3_q3': {
+        type: DataTypes.INTEGER,
+        allowNull: true
+    },
+    'empl_1_q4': {
+        type: DataTypes.INTEGER,
+        allowNull: true
+    },
+    'empl_2_q4': {
+        type: DataTypes.INTEGER,
+        allowNull: true
+    },
+    'empl_3_q4': {
+        type: DataTypes.INTEGER,
+        allowNull: true
+    },
+    'сколько_месяцев': {
+        type: DataTypes.INTEGER,
+        allowNull: true
+    },
+    'Кол-во_чел': {
+        type: DataTypes.INTEGER,
+        allowNull: true
+    },
+    'Ср.числ': {
+        type: DataTypes.DECIMAL(15, 2),
+        allowNull: true
+    },
+    'field_200_00_001': {
+        type: DataTypes.DECIMAL(15, 2),
+        allowNull: true
+    },
+    'field_200_00_002': {
+        type: DataTypes.DECIMAL(15, 2),
+        allowNull: true
+    },
+    'ФОТ': {
+        type: DataTypes.DECIMAL(15, 2),
+        allowNull: true
+    },
+    'Ср.зп': {
+        type: DataTypes.DECIMAL(15, 2),
+        allowNull: true
+    },
+    'Наименование': {
+        type: DataTypes.TEXT,
+        allowNull: true
+    }
+}, {
+    tableName: 'otchety_full',
+    timestamps: true
+});
+
 // Экспортируем модели
 module.exports = {
     sequelize,
     User,
-    Сводная
+    Сводная,
+    OtchetyFull
 }; 

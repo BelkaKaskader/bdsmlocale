@@ -207,51 +207,26 @@ router.delete('/users/:userId', auth, adminAuth, async (req, res) => {
 });
 
 // Изменение роли пользователя (только для администраторов)
-router.patch('/users/:userId/role', auth, adminAuth, async (req, res) => {
+router.post('/users/:userId/role', auth, adminAuth, async (req, res) => {
     try {
-        console.log('=== Начало изменения роли ===');
-        console.log('ID пользователя:', req.params.userId);
-        console.log('Новая роль:', req.body.role);
-
         const { role } = req.body;
-        
         if (!role || !['admin', 'user'].includes(role)) {
-            console.log('Ошибка: неверная роль:', role);
             return res.status(400).json({ message: 'Роль должна быть "admin" или "user"' });
         }
-
-        console.log('Поиск пользователя...');
         const user = await User.findOne({ where: { id: req.params.userId } });
-        
         if (!user) {
-            console.log('Пользователь не найден');
             return res.status(404).json({ message: 'Пользователь не найден' });
         }
-
-        console.log('Текущая роль пользователя:', user.role);
-
         // Запрещаем изменять роль последнего администратора
         if (user.role === 'admin' && role !== 'admin') {
-            console.log('Проверка количества администраторов...');
-            const adminCount = await User.count({
-                where: { role: 'admin' }
-            });
-            
-            console.log('Количество администраторов:', adminCount);
-            
+            const adminCount = await User.count({ where: { role: 'admin' } });
             if (adminCount <= 1) {
-                console.log('Отказ: последний администратор');
                 return res.status(400).json({ message: 'Невозможно изменить роль последнего администратора' });
             }
         }
-
-        console.log('Обновление роли...');
         user.role = role;
         await user.save();
-
-        console.log('Роль успешно обновлена');
-
-        res.json({ 
+        res.json({
             message: 'Роль пользователя успешно изменена',
             user: {
                 id: user.id,
@@ -261,12 +236,7 @@ router.patch('/users/:userId/role', auth, adminAuth, async (req, res) => {
             }
         });
     } catch (error) {
-        console.error('Ошибка при изменении роли:', error);
-        res.status(500).json({ 
-            message: 'Ошибка при изменении роли пользователя',
-            error: error.message,
-            stack: error.stack
-        });
+        res.status(500).json({ message: 'Ошибка при изменении роли пользователя', error: error.message });
     }
 });
 
@@ -383,6 +353,61 @@ router.post('/reset-password', async (req, res) => {
 // Удаление своего профиля (запрещено)
 router.delete('/profile', auth, async (req, res) => {
     return res.status(403).json({ message: 'Удаление профиля запрещено. Обратитесь к администратору.' });
+});
+
+// Смена пароля пользователю (только для администратора)
+router.post('/users/:id/password', auth, adminAuth, async (req, res) => {
+    try {
+        const userId = req.params.id;
+        const { password } = req.body;
+
+        if (!password) {
+            return res.status(400).json({ message: 'Пароль обязателен' });
+        }
+
+        const user = await User.findByPk(userId);
+        if (!user) {
+            return res.status(404).json({ message: 'Пользователь не найден' });
+        }
+
+        user.password = password; // beforeSave hook захеширует пароль
+        await user.save();
+
+        res.json({ message: 'Пароль успешно изменён' });
+    } catch (error) {
+        console.error('Ошибка при смене пароля админом:', error);
+        res.status(500).json({ message: 'Ошибка при смене пароля', error: error.message });
+    }
+});
+
+// Новый POST-эндпоинт для блокировки/разблокировки пользователя
+router.post('/users/:userId/block', auth, adminAuth, async (req, res) => {
+    try {
+        const user = await User.findOne({ where: { id: req.params.userId } });
+        if (!user) {
+            return res.status(404).json({ message: 'Пользователь не найден' });
+        }
+        if (user.role === 'admin') {
+            const adminCount = await User.count({ where: { role: 'admin' } });
+            if (adminCount <= 1) {
+                return res.status(400).json({ message: 'Невозможно заблокировать последнего администратора' });
+            }
+        }
+        user.isBlocked = !user.isBlocked;
+        await user.save();
+        res.json({
+            message: `Пользователь успешно ${user.isBlocked ? 'заблокирован' : 'разблокирован'}`,
+            user: {
+                id: user.id,
+                username: user.username,
+                email: user.email,
+                role: user.role,
+                isBlocked: user.isBlocked
+            }
+        });
+    } catch (error) {
+        res.status(500).json({ message: 'Ошибка при блокировке/разблокировке пользователя', error: error.message });
+    }
 });
 
 module.exports = router; 

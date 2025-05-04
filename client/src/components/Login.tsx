@@ -9,6 +9,7 @@ import {
 } from '@mui/material';
 import { useNavigate } from 'react-router-dom';
 import api from '../api/axios';
+import { useAuth } from '../contexts/AuthContext';
 
 interface LoginProps {
   onLoginSuccess: () => void;
@@ -19,6 +20,7 @@ const Login: React.FC<LoginProps> = ({ onLoginSuccess }) => {
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const navigate = useNavigate();
+  const { setUser } = useAuth();
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -49,6 +51,15 @@ const Login: React.FC<LoginProps> = ({ onLoginSuccess }) => {
         setError('Ошибка при сохранении токена');
         return;
       }
+
+      // Обновляем пользователя в контексте сразу после входа
+      setUser({
+        id: response.data.user.id,
+        name: response.data.user.username,
+        email: response.data.user.email,
+        role: response.data.user.role,
+        isBlocked: response.data.user.isBlocked ?? false
+      });
 
       console.log('Вход успешен, переход на dashboard...');
       onLoginSuccess();

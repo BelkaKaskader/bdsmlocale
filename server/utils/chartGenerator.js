@@ -220,16 +220,24 @@ const generatePieChart = async (data, title) => {
           }
         },
         datalabels: {
-          display: true,
-          color: '#000',
-          font: {
-            size: 16,
-            weight: 'bold'
+          color: 'black',
+          backgroundColor: null,
+          borderColor: null,
+          borderWidth: 0,
+          borderRadius: 0,
+          padding: 0,
+          font: { size: 14, weight: 'bold' },
+          anchor: 'center',
+          align: 'center',
+          offset: 0,
+          display: function(context) {
+            const value = context.dataset.data[context.dataIndex];
+            const percent = (value / total) * 100;
+            return percent >= 3;
           },
-          formatter: function(value) {
-            value = Number(value) || 0;
-            const percentage = ((value / total) * 100).toFixed(1);
-            return `${percentage}%`;
+          formatter: function(value, context) {
+            const percent = ((value / total) * 100).toFixed(1);
+            return `${percent}%`;
           }
         }
       }

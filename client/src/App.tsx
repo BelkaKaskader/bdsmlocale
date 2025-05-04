@@ -9,6 +9,9 @@ import {
 import { Container, CssBaseline, ThemeProvider, createTheme } from '@mui/material';
 import Login from './components/Login';
 import DataTable from './components/DataTable';
+import Profile from './components/Profile';
+import AppBar from './components/AppBar';
+import { AuthProvider } from './contexts/AuthContext';
 
 const theme = createTheme({
   palette: {
@@ -45,7 +48,23 @@ function App() {
           path="/dashboard"
           element={
             isAuthenticated ? (
-              <DataTable />
+              <>
+                <AppBar />
+                <DataTable />
+              </>
+            ) : (
+              <Navigate to="/login" replace />
+            )
+          }
+        />
+        <Route
+          path="/profile"
+          element={
+            isAuthenticated ? (
+              <>
+                <AppBar />
+                <Profile />
+              </>
             ) : (
               <Navigate to="/login" replace />
             )
@@ -58,10 +77,12 @@ function App() {
 
   return (
     <ThemeProvider theme={theme}>
-      <CssBaseline />
-      <Container maxWidth="xl">
-        <RouterProvider router={router} />
-      </Container>
+      <AuthProvider>
+        <CssBaseline />
+        <Container maxWidth="xl">
+          <RouterProvider router={router} />
+        </Container>
+      </AuthProvider>
     </ThemeProvider>
   );
 }

@@ -488,18 +488,6 @@ const generatePdf = async (req, res) => {
             currentY += maxHeight + 10;
         });
 
-        // Добавляем номера страниц
-        const totalPages = doc.bufferedPageRange().count;
-        for (let i = 0; i < totalPages; i++) {
-            doc.switchToPage(i);
-            doc.fontSize(8).text(
-                `Страница ${i + 1} из ${totalPages}`,
-                50,
-                doc.page.height - 50,
-                { align: 'center' }
-            );
-        }
-
         // Завершаем документ
         doc.end();
     } catch (error) {

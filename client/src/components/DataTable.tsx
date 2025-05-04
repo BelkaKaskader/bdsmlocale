@@ -387,14 +387,6 @@ const DataTable: React.FC = () => {
               >
                 Фильтры
               </Button>
-              <Button
-                variant="outlined"
-                color="error"
-                startIcon={<LogoutIcon />}
-                onClick={handleLogout}
-              >
-                Выход
-              </Button>
             </Box>
           </Grid>
         </Grid>
