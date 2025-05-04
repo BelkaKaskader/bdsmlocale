@@ -749,7 +749,7 @@ exports.generatePdf = async (req, res) => {
 
           // Добавляем отступ и линию
           doc.moveTo(positions.код_окэд, y)
-             .lineTo(positions.код_окэд + STYLES.table.columns.код_окэд, y)
+             .lineTo(positions.код_окэd + STYLES.table.columns.код_окэд, y)
              .stroke();
 
           // Заголовок для связанных записей
@@ -972,6 +972,67 @@ exports.generateDetailPdf = async (req, res) => {
     
     // Добавляем разделительную линию
     doc.moveTo(50, y).lineTo(550, y).stroke();
+    
+    // Получаем связанные записи
+    const related = await OtchetyFull.findAll({
+      where: {
+        'ОКЭД': record.вид_деятельности
+      },
+      order: [['Код ОКЭД', 'ASC']],
+      charset: 'utf8'
+    });
+
+    // Добавляем связанные записи, если они есть
+    if (related && related.length > 0) {
+      y += 20;
+
+      // Заголовок для связанных записей
+      doc.font('PTSans-Bold')
+         .fontSize(STYLES.fontSize.small)
+         .text('Связанные записи:', 50, y, {
+           width: 500,
+           align: 'left'
+         });
+      y += 15;
+      y += 10; // Дополнительный отступ между "Связанные записи:" и заголовками столбцов
+
+      // Заголовки столбцов
+      const nameWidth = 260;
+      const iinWidth = 110;
+      const fotWidth = 100;
+      doc.font('PTSans-Bold')
+         .fontSize(STYLES.fontSize.small)
+         .text('Наименование', 50, y, { width: nameWidth, align: 'left' })
+         .text('ИИН/БИН', 50 + nameWidth + 10, y, { width: iinWidth, align: 'left' })
+         .text('ФОТ', 50 + nameWidth + iinWidth + 20, y, { width: fotWidth, align: 'right' });
+      y += 15;
+
+      // Выводим каждую связанную запись по столбцам
+      doc.font('PTSans').fontSize(STYLES.fontSize.small);
+      for (const rel of related) {
+        if (y > doc.page.height - 100) {
+          doc.addPage();
+          y = doc.y;
+          // Повторяем заголовки столбцов на новой странице
+          doc.font('PTSans-Bold')
+             .fontSize(STYLES.fontSize.small)
+             .text('Наименование', 50, y, { width: nameWidth, align: 'left' })
+             .text('ИИН/БИН', 50 + nameWidth + 10, y, { width: iinWidth, align: 'left' })
+             .text('ФОТ', 50 + nameWidth + iinWidth + 20, y, { width: fotWidth, align: 'right' });
+          y += 15;
+          doc.font('PTSans').fontSize(STYLES.fontSize.small);
+        }
+        const name = processText(rel['Наименование'] || '');
+        const iin = rel['ИИН/БИН'] || '';
+        const fot = rel['ФОТ'] !== undefined && rel['ФОТ'] !== null && !isNaN(Number(rel['ФОТ'])) ? formatNumber(Math.round(Number(rel['ФОТ']))) : '-';
+        // Вычисляем высоту блока для name
+        const nameHeight = doc.heightOfString(name, { width: nameWidth, align: 'left' });
+        doc.text(name, 50, y, { width: nameWidth, align: 'left' })
+           .text(iin, 50 + nameWidth + 10, y, { width: iinWidth, align: 'left' })
+           .text(fot, 50 + nameWidth + iinWidth + 20, y, { width: fotWidth, align: 'right' });
+        y += nameHeight + 5;
+      }
+    }
     
     // Завершаем документ
     doc.end();
