@@ -2,11 +2,11 @@ const { Pool } = require('pg');
 
 // Подключение к базе данных
 const pool = new Pool({
-  user: 'postgres',
-  host: 'localhost',
-  database: 'bdsm',
-  password: 'admin',
-  port: 5432,
+  user: process.env.DB_USER,
+  host: process.env.DB_HOST,
+  database: process.env.DB_NAME,
+  password: process.env.DB_PASSWORD,
+  port: process.env.DB_PORT,
 });
 
 /**

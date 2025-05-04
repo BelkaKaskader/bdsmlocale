@@ -1,13 +1,13 @@
 const { Sequelize, DataTypes } = require('sequelize');
-require('dotenv').config({ path: '../../.env' });
+require('dotenv').config({ path: __dirname + '/../.env' });
 
 // Подключение с использованием объекта конфигурации
 const sequelize = new Sequelize({
-    database: 'bdsm',
-    username: 'postgres',
-    password: 'admin',
-    host: 'localhost',
-    port: 5432,
+    database: process.env.DB_NAME,
+    username: process.env.DB_USER,
+    password: process.env.DB_PASSWORD,
+    host: process.env.DB_HOST,
+    port: process.env.DB_PORT,
     dialect: 'postgres',
     logging: false
 });
